@@ -1,0 +1,117 @@
+// TaskFlow 数据模型
+// 依据：docs/architecture.md §9、docs/adr-001-technical-decisions.md §5
+// 约束：Issue 必须外键绑定 Workspace；状态使用数据库枚举防止非法值入库。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Issue 状态：BACKLOG → TODO → IN_PROGRESS → DONE
+enum IssueStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+/// 用户：邮箱唯一，密码只存哈希（禁止明文）
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  memberships     WorkspaceMember[]
+  ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
+}
+
+/// Auth.js 账号绑定表
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+/// 会话持久化表。sessionToken 的 @unique 已提供索引，每次请求的会话校验依赖它。
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// 任务数据的隔离单元：所有 Issue 查询的强制过滤维度
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members WorkspaceMember[]
+  issues  Issue[]
+
+  @@index([ownerId])
+}
+
+/// 成员关系：权限判定的依据
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String   @default("OWNER")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+/// 任务。workspaceId 外键必填；title 非空且 ≤200（数据库层用 VarChar(200) 兜底，应用层由 Zod 校验）
+model Issue {
+  id          String      @id @default(cuid())
+  workspaceId String
+  title       String      @db.VarChar(200)
+  description String?     @db.Text
+  status      IssueStatus @default(BACKLOG)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  /// 看板分列查询
+  @@index([workspaceId, status])
+  /// 列表视图按创建时间排序
+  @@index([workspaceId, createdAt])
+}
