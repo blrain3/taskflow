@@ -271,6 +271,17 @@ async function runIssueCrudChecks(primaryJar, primaryUserId) {
     created ? `id=${created.id} status=${created.status}` : "未写入"
   );
 
+  // 看板视图（P0-08）：客户端组件也会 SSR 输出，四列标题与新卡片都应出现在 HTML 里
+  const boardPage = await fetchPage(`${issuesUrl}?view=board`, primaryJar.header());
+  const boardColumnsOk = ["待整理", "待开始", "进行中", "已完成"].every((label) =>
+    boardPage.html.includes(label)
+  );
+  check(
+    "看板视图 SSR 渲染四列与新卡片",
+    boardPage.status === 200 && boardColumnsOk && boardPage.html.includes(title),
+    `http=${boardPage.status} columns=${boardColumnsOk}`
+  );
+
   // 空标题：应被 Zod 拦下，不产生记录
   const emptyForm = extractForm(
     (await fetchPage(issuesUrl, primaryJar.header())).html,
