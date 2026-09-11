@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { Board } from "@/components/board/Board";
+import { AiBreakdownPanel } from "@/components/issue/AiBreakdownPanel";
 import { IssueForm } from "@/components/issue/IssueForm";
 import { IssueList } from "@/components/issue/IssueList";
 import { listIssues } from "@/lib/issues";
@@ -60,6 +61,8 @@ export default async function IssuesPage({
       </section>
 
       {isBoard ? <Board issues={issues} /> : <IssueList issues={issues} />}
+
+      <AiBreakdownPanel />
     </div>
   );
 }

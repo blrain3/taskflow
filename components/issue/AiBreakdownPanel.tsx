@@ -1,0 +1,240 @@
+"use client";
+
+import { useRef, useState } from "react";
+
+import { createIssuesFromSubtasksAction } from "@/actions/issue";
+import type { ActionResult } from "@/types/action";
+import type { GeneratedSubtask } from "@/types/issue";
+
+/**
+ * AI 拆分 + 确认创建面板（US-007 / US-008 / P0-10 / P0-11）。
+ *
+ * 状态机：
+ * idle → loading → success（可编辑/删除候选）→ creating → 回到 idle 并提示创建数
+ * 拆分为两段：phase 描述「拆分流程」的显式阶段，creating 单独表示「批量创建请求在途」。
+ * 二者刻意分开，因为创建期间候选列表必须继续可见（按钮换文案 + 禁用），
+ * 若把 creating 并入 phase 单值，列表会被卸载，用户看不到正在提交的内容。
+ *
+ * 设计决策：
+ * - AI 调用走 Route Handler（fetch），批量创建走 Server Action（直调）；
+ * - creating 期间两个按钮都禁用，避免重复提交；
+ * - 错误条只展示 ErrorCode 对应的安全文案，不透出堆栈或 prompt 内容。
+ */
+type Phase = "idle" | "loading" | "success";
+
+type PanelError = { message: string };
+
+type CreatedToast = { count: number; duplicate: boolean };
+
+const MIN_PROMPT_LENGTH = 10;
+
+export function AiBreakdownPanel() {
+  const [prompt, setPrompt] = useState("");
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [creating, setCreating] = useState(false);
+  const [subtasks, setSubtasks] = useState<GeneratedSubtask[]>([]);
+  const [error, setError] = useState<PanelError | null>(null);
+  const [created, setCreated] = useState<CreatedToast | null>(null);
+
+  const trimmed = prompt.trim();
+  const canBreakdown = trimmed.length >= MIN_PROMPT_LENGTH && phase !== "loading" && !creating;
+
+  /**
+   * 幂等键：一批候选用一个 requestId，服务端据此生成确定性主键。
+   * 因此「网络抖动后用户再点一次确认」会命中同一批次而不是创建两份。
+   * 惰性生成（而非 useState 初值），避免 SSR 与客户端各自生成导致的不一致。
+   */
+  const requestIdRef = useRef<string | null>(null);
+  function currentRequestId(): string {
+    if (requestIdRef.current === null) {
+      requestIdRef.current = crypto.randomUUID();
+    }
+    return requestIdRef.current;
+  }
+
+  function startNewBatch() {
+    requestIdRef.current = null;
+  }
+
+  async function handleBreakdown() {
+    setError(null);
+    setCreated(null);
+    setPhase("loading");
+    try {
+      const response = await fetch("/api/ai/breakdown", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: trimmed }),
+      });
+      const payload = (await response.json()) as ActionResult<{ subtasks: GeneratedSubtask[] }>;
+      if (!payload.ok) {
+        setError({ message: payload.error.message });
+        setPhase("idle");
+        return;
+      }
+      // 新一批候选 = 新一个批次标识，避免与上一批的幂等键混用
+      startNewBatch();
+      setSubtasks(payload.data.subtasks);
+      setPhase("success");
+    } catch (caught) {
+      setError({
+        message: caught instanceof Error ? `网络异常：${caught.message}` : "网络异常，请稍后重试",
+      });
+      setPhase("idle");
+    }
+  }
+
+  async function handleCreate() {
+    setError(null);
+    setCreated(null);
+    setCreating(true);
+    try {
+      // 沿用同一 requestId：网络抖动后的重试会命中服务端幂等，不会创建两份
+      const result = await createIssuesFromSubtasksAction({
+        requestId: currentRequestId(),
+        subtasks,
+      });
+      if (!result.ok) {
+        // 失败保留候选项与用户编辑，方便直接重试
+        setError({ message: result.error.message });
+        return;
+      }
+      setCreated({ count: result.data.createdCount, duplicate: result.data.duplicate });
+      setSubtasks([]);
+      setPrompt("");
+      setPhase("idle");
+      startNewBatch();
+    } catch (caught) {
+      setError({
+        message: caught instanceof Error ? `网络异常：${caught.message}` : "网络异常，请稍后重试",
+      });
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function updateSubtask(index: number, patch: Partial<GeneratedSubtask>) {
+    setSubtasks((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
+  function removeSubtask(index: number) {
+    setSubtasks((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  return (
+    <section
+      className="mt-6 rounded-lg border border-zinc-200 p-4"
+      aria-labelledby="ai-breakdown-heading"
+    >
+      <header className="flex items-baseline justify-between">
+        <h2 className="text-sm font-medium text-zinc-800" id="ai-breakdown-heading">
+          AI 拆分任务
+        </h2>
+        <span className="text-xs text-zinc-500">
+          描述一段工作，AI 拆出可执行子任务，确认后批量创建
+        </span>
+      </header>
+
+      <div className="mt-3">
+        <label className="block text-sm font-medium text-zinc-800" htmlFor="ai-prompt">
+          工作描述
+        </label>
+        <textarea
+          id="ai-prompt"
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          rows={3}
+          maxLength={2000}
+          disabled={phase === "loading" || creating}
+          placeholder="例如：实现 OAuth2 登录，支持邮箱 + GitHub 两种方式"
+          className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-zinc-100"
+        />
+        <p className="mt-1 text-xs text-zinc-500">至少 10 个字符</p>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={handleBreakdown}
+          disabled={!canBreakdown}
+          className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
+        >
+          {phase === "loading" ? "AI 拆分中…" : "AI 拆分"}
+        </button>
+
+        {phase === "success" && subtasks.length > 0 ? (
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={creating}
+            className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+          >
+            {creating ? "创建中…" : `确认创建 ${subtasks.length} 个任务`}
+          </button>
+        ) : null}
+      </div>
+
+      {error ? (
+        <p
+          role="alert"
+          className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          {error.message}
+        </p>
+      ) : null}
+
+      {created ? (
+        <p
+          role="status"
+          className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+        >
+          {created.duplicate
+            ? `该批次已创建过，未重复写入（共 ${created.count} 个任务）`
+            : `已创建 ${created.count} 个任务`}
+        </p>
+      ) : null}
+
+      {phase === "success" && subtasks.length > 0 ? (
+        <ul className="mt-4 space-y-3" aria-label="AI 拆分候选子任务">
+          {subtasks.map((item, index) => (
+            <li key={index} className="rounded-lg border border-zinc-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs text-zinc-400">#{index + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => removeSubtask(index)}
+                  disabled={creating}
+                  className="text-xs text-red-700 underline underline-offset-2 hover:text-red-900 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:no-underline"
+                >
+                  删除
+                </button>
+              </div>
+              <input
+                type="text"
+                value={item.title}
+                onChange={(event) => updateSubtask(index, { title: event.target.value })}
+                maxLength={200}
+                disabled={creating}
+                className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm font-medium text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 disabled:bg-zinc-100"
+                aria-label={`子任务 ${index + 1} 标题`}
+              />
+              <textarea
+                value={item.description ?? ""}
+                onChange={(event) =>
+                  updateSubtask(index, {
+                    description: event.target.value.length === 0 ? null : event.target.value,
+                  })
+                }
+                rows={2}
+                maxLength={2000}
+                disabled={creating}
+                className="mt-2 w-full rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 disabled:bg-zinc-100"
+                aria-label={`子任务 ${index + 1} 描述`}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
