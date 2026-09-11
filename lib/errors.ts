@@ -17,6 +17,7 @@ const SAFE_MESSAGES: Record<ErrorCode, string> = {
   VALIDATION_FAILED: "输入内容不合法，请检查后重试",
   NOT_FOUND: "目标不存在或已被删除",
   CONFLICT: "该数据已存在",
+  AI_DISABLED: "AI 功能未启用，请在服务端配置 AI_API_KEY",
   AI_INVALID_OUTPUT: "AI 返回结果无法解析，请重新生成",
   AI_TIMEOUT: "AI 响应超时，请重试",
   RATE_LIMITED: "操作过于频繁，请稍后再试",

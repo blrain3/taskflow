@@ -105,10 +105,47 @@ export const moveIssueSchema = z.object({
     .max(500, { error: "单列任务数超出上限" }),
 });
 
+/**
+ * AI 拆分子任务契约（P0-10 / P0-11）。
+ * 服务端与 AI 输出共用：AI 输出的每条记录必先通过 generatedSubtaskSchema，
+ * 用户在面板上编辑/删除后，通过 createIssuesFromSubtasksSchema 提交批量创建。
+ */
+export const generatedSubtaskSchema = z.object({
+  title: issueTitleSchema,
+  description: issueDescriptionSchema.optional(),
+});
+
+export const generatedSubtasksSchema = z
+  .array(generatedSubtaskSchema)
+  .min(1, { error: "至少需要一条子任务" })
+  .max(20, { error: "单次最多 20 条子任务" });
+
+/**
+ * 批量创建入参（P0-11）。
+ *
+ * requestId 是幂等键：客户端每次「得到一批 AI 候选」时生成一个 UUID，
+ * 服务端据此生成确定性主键（`<requestId>:<index>`），重复提交同一批次不会产生重复任务。
+ * 这就是 P0-11 验收 ④「重复点击确认不产生重复 Issue」的服务端那一半保证。
+ */
+export const createIssuesFromSubtasksSchema = z.object({
+  requestId: z.uuid({ error: "缺少有效的批次标识" }),
+  subtasks: generatedSubtasksSchema,
+});
+
+export const aiBreakdownRequestSchema = z.object({
+  prompt: z
+    .string()
+    .trim()
+    .min(10, { error: "请输入至少 10 个字符的描述" })
+    .max(4000, { error: "描述不能超过 4000 个字符" }),
+});
+
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;
 export type DeleteIssueInput = z.infer<typeof deleteIssueSchema>;
 export type MoveIssueInput = z.infer<typeof moveIssueSchema>;
+export type GeneratedSubtaskInput = z.infer<typeof generatedSubtaskSchema>;
+export type CreateIssuesFromSubtasksInput = z.infer<typeof createIssuesFromSubtasksSchema>;
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

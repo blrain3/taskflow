@@ -9,6 +9,7 @@ export type ErrorCode =
   | "VALIDATION_FAILED"
   | "NOT_FOUND"
   | "CONFLICT"
+  | "AI_DISABLED"
   | "AI_INVALID_OUTPUT"
   | "AI_TIMEOUT"
   | "RATE_LIMITED"

@@ -17,7 +17,16 @@ import "server-only";
  */
 
 type EnvKey =
-  "DATABASE_URL" | "AUTH_SECRET" | "AI_BASE_URL" | "AI_API_KEY" | "AI_MODEL" | "AI_TIMEOUT_MS";
+  | "DATABASE_URL"
+  | "AUTH_SECRET"
+  | "AI_BASE_URL"
+  | "AI_API_KEY"
+  | "AI_MODEL"
+  | "AI_TIMEOUT_MS"
+  | "AI_PROVIDER"
+  | "AI_RATE_LIMIT_PER_MINUTE";
+
+export type AiProvider = "openai" | "mock";
 
 const HINTS: Record<EnvKey, string> = {
   DATABASE_URL:
@@ -27,12 +36,19 @@ const HINTS: Record<EnvKey, string> = {
   AI_API_KEY: "模型服务的 API Key。仅服务端使用，严禁添加 NEXT_PUBLIC_ 前缀。",
   AI_MODEL: "模型名称，例如 deepseek-chat",
   AI_TIMEOUT_MS: "AI 调用超时毫秒数，默认 30000",
+  AI_PROVIDER:
+    "AI 提供方：openai（默认，需 AI_API_KEY）或 mock（本地离线开发与冒烟用，不依赖外部服务）",
+  AI_RATE_LIMIT_PER_MINUTE: "每个用户每分钟允许的 AI 调用次数，默认 10。本地冒烟可调小以复现限流",
 };
 
 /** 缺失即服务不可用 */
 export const REQUIRED_ENV_KEYS: readonly EnvKey[] = ["DATABASE_URL", "AUTH_SECRET"];
 
-/** 按能力分组的可选变量；整组缺失时对应功能关闭 */
+/**
+ * 按能力分组的可选变量：
+ * - ai/openai 模式：需 AI_BASE_URL / AI_API_KEY / AI_MODEL，缺任意一项视为 AI 关闭。
+ * - ai/mock 模式：无外部依赖，三项可全缺，AI 走本地预设样本（仅用于离线开发与冒烟）。
+ */
 export const OPTIONAL_FEATURE_ENV: ReadonlyArray<{ feature: string; keys: readonly EnvKey[] }> = [
   { feature: "ai", keys: ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"] },
 ];
@@ -69,9 +85,13 @@ export function missingEnvKeys(): EnvKey[] {
 
 /**
  * 返回因变量缺失而不可用的功能。
- * 整组变量缺任意一个都算该功能关闭，并列出具体缺哪几个。
+ *
+ * mock 模式：AI_PROVIDER=mock 时不需要 AI_* 三件套，AI 视为可用。
+ * 其它情况按整组判断：缺任意一项就视为该功能关闭，并列出具体缺哪几个。
  */
 export function disabledFeatures(): DisabledFeature[] {
+  const provider = rawValue("AI_PROVIDER");
+  if (provider === "mock") return [];
   return OPTIONAL_FEATURE_ENV.flatMap(({ feature, keys }) => {
     const missing = keys.filter((key) => rawValue(key) === undefined);
     return missing.length > 0 ? [{ feature, missing }] : [];
@@ -103,6 +123,27 @@ export const env = {
     if (!Number.isFinite(parsed) || parsed <= 0) {
       throw new Error(
         `[env] AI_TIMEOUT_MS 必须是正整数毫秒数，当前值：${JSON.stringify(value)}（${HINTS.AI_TIMEOUT_MS}）`
+      );
+    }
+    return parsed;
+  },
+  /** AI 提供方：openai（默认，调真实 LLM）或 mock（本地离线 / 冒烟） */
+  get AI_PROVIDER(): AiProvider {
+    const value = rawValue("AI_PROVIDER");
+    if (value === undefined || value === "openai") return "openai";
+    if (value === "mock") return "mock";
+    throw new Error(
+      `[env] AI_PROVIDER 必须是 openai 或 mock，当前值：${JSON.stringify(value)}（${HINTS.AI_PROVIDER}）`
+    );
+  },
+  /** AI 限流：每个用户每分钟允许次数。未配置时 10 次 */
+  get AI_RATE_LIMIT_PER_MINUTE(): number {
+    const value = rawValue("AI_RATE_LIMIT_PER_MINUTE");
+    if (value === undefined) return 10;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(
+        `[env] AI_RATE_LIMIT_PER_MINUTE 必须是正整数，当前值：${JSON.stringify(value)}（${HINTS.AI_RATE_LIMIT_PER_MINUTE}）`
       );
     }
     return parsed;

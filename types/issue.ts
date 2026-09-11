@@ -52,3 +52,12 @@ export function groupIssuesByStatus(
   }
   return groups;
 }
+
+/**
+ * AI 拆分的子任务契约（与 Issue 共享 title/description 长度约束）。
+ * 客户端与服务端共用：AI 输出经 Zod 强校验后转成此结构；用户在面板上编辑/删除候选也是它。
+ */
+export type GeneratedSubtask = {
+  title: string;
+  description?: string | null;
+};
