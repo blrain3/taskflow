@@ -4,13 +4,15 @@ import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
 import { toActionError } from "@/lib/errors";
-import { createIssue, deleteIssue, updateIssue } from "@/lib/issues";
+import { createIssue, deleteIssue, moveIssueWithinWorkspace, updateIssue } from "@/lib/issues";
 import { ensureWorkspaceForUser } from "@/lib/permissions";
 import {
   createIssueSchema,
   deleteIssueSchema,
   fieldErrorsOf,
+  moveIssueSchema,
   updateIssueSchema,
+  type MoveIssueInput,
 } from "@/lib/validation";
 import type { ActionError, ActionResult } from "@/types/action";
 import type { IssueItem } from "@/types/issue";
@@ -32,7 +34,7 @@ const ISSUES_PATH = "/issues";
 
 export type IssueFormState = ActionResult<IssueItem | null> | null;
 
-function failure(error: ActionError): IssueFormState {
+function failure(error: ActionError): { ok: false; error: ActionError } {
   return { ok: false, error };
 }
 
@@ -134,6 +136,37 @@ export async function deleteIssueAction(
   try {
     const workspace = await resolveWorkspace();
     await deleteIssue({ workspaceId: workspace.id, id: parsed.data.id });
+
+    revalidatePath(ISSUES_PATH);
+    return { ok: true, data: null };
+  } catch (error) {
+    return failure(toActionError(error));
+  }
+}
+
+/**
+ * 看板拖拽（P0-09）。与上面三个表单型 Action 不同，这里由客户端 JS 直调
+ * （拖拽天然依赖 JS，不存在渐进增强通道），入参是普通对象而不是 FormData。
+ * 四步不变：校验 → 鉴权 → 授权（服务端推导 workspaceId）→ 事务写库 + revalidatePath。
+ */
+export async function moveIssue(input: MoveIssueInput): Promise<ActionResult<null>> {
+  const parsed = moveIssueSchema.safeParse(input);
+  if (!parsed.success) {
+    return failure({
+      code: "VALIDATION_FAILED",
+      message: "请检查填写内容",
+      fields: fieldErrorsOf(parsed.error),
+    });
+  }
+
+  try {
+    const workspace = await resolveWorkspace();
+    await moveIssueWithinWorkspace({
+      workspaceId: workspace.id,
+      issueId: parsed.data.issueId,
+      toStatus: parsed.data.toStatus,
+      orderedIds: parsed.data.orderedIds,
+    });
 
     revalidatePath(ISSUES_PATH);
     return { ok: true, data: null };

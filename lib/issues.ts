@@ -49,7 +49,8 @@ export function toIssueItem(row: IssueRow): IssueItem {
 export async function listIssues(workspaceId: string): Promise<IssueItem[]> {
   const rows = await getPrisma().issue.findMany({
     where: { workspaceId },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    // position 是看板列内序（步长 100）；历史数据为 0，由 createdAt 兜底
+    orderBy: [{ position: "asc" }, { createdAt: "desc" }, { id: "desc" }],
     select: ISSUE_SELECT,
   });
 
@@ -115,4 +116,63 @@ export async function deleteIssue(params: DeleteIssueParams): Promise<void> {
   if (count === 0) {
     throw new AppError("NOT_FOUND");
   }
+}
+
+export type MoveIssueParams = {
+  workspaceId: string;
+  issueId: string;
+  toStatus: IssueStatusValue;
+  /** 目标列的完整顺序（含被拖卡片），由客户端拖拽落点推导 */
+  orderedIds: string[];
+};
+
+/**
+ * 看板拖拽落库（P0-09）：单事务内完成「归属校验 → 改状态 → 整列重写 position」。
+ *
+ * 并发策略是整列快照覆盖（后写者赢）：
+ * - 事务期间目标列新出现的卡片（别的标签页/设备创建或移入）不在 orderedIds 里，
+ *   追加到列尾而不是丢弃，保证不产生「看不见的孤儿」；
+ * - orderedIds 里不属于目标列的卡片（恶意或过期的清单）不参与重排，只能改它自己的顺序。
+ */
+export async function moveIssueWithinWorkspace(params: MoveIssueParams): Promise<void> {
+  const uniqueIds = [...new Set(params.orderedIds)];
+  if (!uniqueIds.includes(params.issueId)) {
+    throw new AppError("VALIDATION_FAILED", { message: "排序列表缺少被移动的任务" });
+  }
+
+  await getPrisma().$transaction(async (tx) => {
+    // 1. 归属校验：清单里任何一张卡不属于当前 Workspace，整体失败（不区分不存在与无权限）
+    const ownedCount = await tx.issue.count({
+      where: { id: { in: uniqueIds }, workspaceId: params.workspaceId },
+    });
+    if (ownedCount !== uniqueIds.length) {
+      throw new AppError("NOT_FOUND");
+    }
+
+    // 2. 组出目标列的最终顺序：客户端清单在前，事务期间新出现的卡追加到列尾
+    const columnRows = await tx.issue.findMany({
+      where: { status: params.toStatus, workspaceId: params.workspaceId },
+      select: { id: true },
+    });
+    const known = new Set(uniqueIds);
+    const orderedInColumn = uniqueIds.filter(
+      (id) => id === params.issueId || columnRows.some((row) => row.id === id)
+    );
+    const appended = columnRows.filter((row) => !known.has(row.id)).map((row) => row.id);
+    const fullOrder = [...orderedInColumn, ...appended];
+
+    // 3. 被拖卡片改状态（列内排序时状态不变，重复写入无副作用）
+    await tx.issue.updateMany({
+      where: { id: params.issueId, workspaceId: params.workspaceId },
+      data: { status: params.toStatus },
+    });
+
+    // 4. 整列重写 position（步长 100，为未来的无拖拽插入留中缝）
+    for (let index = 0; index < fullOrder.length; index += 1) {
+      await tx.issue.update({
+        where: { id: fullOrder[index] },
+        data: { position: index * 100 },
+      });
+    }
+  });
 }

@@ -36,3 +36,19 @@ export type IssueItem = {
 export function isIssueStatus(value: unknown): value is IssueStatusValue {
   return typeof value === "string" && (ISSUE_STATUSES as readonly string[]).includes(value);
 }
+
+/** 看板分列：按状态的列分组，列内顺序保持传入顺序（服务端已按 position 排好） */
+export function groupIssuesByStatus(
+  issues: readonly IssueItem[]
+): Record<IssueStatusValue, IssueItem[]> {
+  const groups: Record<IssueStatusValue, IssueItem[]> = {
+    BACKLOG: [],
+    TODO: [],
+    IN_PROGRESS: [],
+    DONE: [],
+  };
+  for (const issue of issues) {
+    groups[issue.status].push(issue);
+  }
+  return groups;
+}

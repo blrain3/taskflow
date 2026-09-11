@@ -92,9 +92,23 @@ export const deleteIssueSchema = z.object({
   id: z.string().trim().min(1, { error: "缺少任务 ID" }),
 });
 
+/**
+ * 看板拖拽落点（P0-09）。orderedIds 是目标列的完整顺序（含被拖卡片）：
+ * 发整列而非「前后邻居中点值」，可避免浮点精度衰减，且并发语义清晰（整列覆盖，后写者赢）。
+ */
+export const moveIssueSchema = z.object({
+  issueId: z.string().trim().min(1, { error: "缺少任务 ID" }),
+  toStatus: issueStatusSchema,
+  orderedIds: z
+    .array(z.string().trim().min(1))
+    .min(1, { error: "缺少排序列表" })
+    .max(500, { error: "单列任务数超出上限" }),
+});
+
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;
 export type DeleteIssueInput = z.infer<typeof deleteIssueSchema>;
+export type MoveIssueInput = z.infer<typeof moveIssueSchema>;
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
