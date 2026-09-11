@@ -132,13 +132,6 @@ export async function registerAccount(
       label: "auth:register:ip",
     });
   } catch (error) {
-    if (isUniqueViolation(error)) {
-      return failure({
-        code: "CONFLICT",
-        message: "该邮箱已注册",
-        fields: { email: "该邮箱已注册，请直接登录" },
-      });
-    }
     return failure(toActionError(error));
   }
 
@@ -157,6 +150,13 @@ export async function registerAccount(
       data: { name, email, passwordHash: await hashPassword(password) },
     });
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return failure({
+        code: "CONFLICT",
+        message: "该邮箱已注册",
+        fields: { email: "该邮箱已注册，请直接登录" },
+      });
+    }
     return failure(toActionError(error));
   }
 
