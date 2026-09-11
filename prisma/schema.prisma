@@ -107,13 +107,15 @@ model Issue {
   title       String      @db.VarChar(200)
   description String?     @db.Text
   status      IssueStatus @default(BACKLOG)
+  /// 看板列内排序；步长 100 给未来的无拖拽插入留中缝，历史数据由 createdAt 兜底
+  position    Int         @default(0)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  /// 看板分列查询
-  @@index([workspaceId, status])
+  /// 看板分列查询 + 列内按 position 排序
+  @@index([workspaceId, status, position])
   /// 列表视图按创建时间排序
   @@index([workspaceId, createdAt])
 }
