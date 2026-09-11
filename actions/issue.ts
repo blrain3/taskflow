@@ -8,12 +8,14 @@ import { createIssue, deleteIssue, moveIssueWithinWorkspace, updateIssue } from 
 import { ensureWorkspaceForUser } from "@/lib/permissions";
 import {
   createIssueSchema,
+  createIssuesFromSubtasksSchema,
   deleteIssueSchema,
   fieldErrorsOf,
   moveIssueSchema,
   updateIssueSchema,
   type MoveIssueInput,
 } from "@/lib/validation";
+import { createIssuesFromSubtasks } from "@/lib/ai";
 import type { ActionError, ActionResult } from "@/types/action";
 import type { IssueItem } from "@/types/issue";
 
@@ -170,6 +172,38 @@ export async function moveIssue(input: MoveIssueInput): Promise<ActionResult<nul
 
     revalidatePath(ISSUES_PATH);
     return { ok: true, data: null };
+  } catch (error) {
+    return failure(toActionError(error));
+  }
+}
+
+/**
+ * AI 确认后批量创建（US-008 / P0-11）。
+ * 与表单型 Action 同样遵守四步契约，但由 JS 直调（不在渐进增强通道里）。
+ * $transaction 保证全成功或全失败；requestId 提供幂等（重复提交不产生重复任务）。
+ */
+export async function createIssuesFromSubtasksAction(
+  input: unknown
+): Promise<ActionResult<{ createdCount: number; duplicate: boolean }>> {
+  const parsed = createIssuesFromSubtasksSchema.safeParse(input);
+  if (!parsed.success) {
+    return failure({
+      code: "VALIDATION_FAILED",
+      message: "请检查子任务内容",
+      fields: fieldErrorsOf(parsed.error),
+    });
+  }
+
+  try {
+    const workspace = await resolveWorkspace();
+    const result = await createIssuesFromSubtasks({
+      workspaceId: workspace.id,
+      requestId: parsed.data.requestId,
+      subtasks: parsed.data.subtasks,
+    });
+
+    revalidatePath(ISSUES_PATH);
+    return { ok: true, data: result };
   } catch (error) {
     return failure(toActionError(error));
   }
