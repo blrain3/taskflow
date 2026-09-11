@@ -1,5 +1,7 @@
 import "server-only";
 
+import { Prisma } from "@prisma/client";
+
 import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { isIssueStatus, type IssueItem, type IssueStatusValue } from "@/types/issue";
@@ -197,4 +199,42 @@ export async function moveIssueWithinWorkspace(params: MoveIssueParams): Promise
       });
     }
   });
+}
+
+/**
+ * 构造「整列重写」的单条 UPDATE（P0-5 方案，见 docs/03-development/p0-5-move-issue-bulk-rewrite.md）。
+ *
+ * 抽成纯函数是为了能脱离数据库做单元测试：断言 Prisma.Sql 的 .sql 与 .values，
+ * 即可验证序号、参数顺序与转型是否写对，无需真实数据库。
+ *
+ * 设计要点：
+ * - 用 WITH ORDINALITY 把数组下标变成序号列，避免 N 个 CASE WHEN；
+ * - 行集合由 JOIN 决定，恰为 fullOrder，不会误伤并发插入的卡片；
+ * - 必须显式写 updatedAt：原始 SQL 不触发 Prisma 的 @updatedAt；
+ *   且 "updatedAt" 是无时区的 TIMESTAMP(3)，故用 AT TIME ZONE 'UTC' 固定 UTC 墙钟，
+ *   避免会话 TimeZone 非 UTC 时出现 8 小时偏移。
+ */
+export function buildMoveIssueUpdate(params: {
+  fullOrder: readonly string[];
+  toStatus: IssueStatusValue;
+  workspaceId: string;
+}): Prisma.Sql {
+  if (params.fullOrder.length === 0) {
+    throw new AppError("VALIDATION_FAILED", { message: "排序列表为空" });
+  }
+
+  return Prisma.sql`
+    WITH ordered AS (
+      SELECT id, ord
+      FROM unnest(ARRAY[${Prisma.join(params.fullOrder)}]::text[]) WITH ORDINALITY AS t(id, ord)
+    )
+    UPDATE "Issue" AS i
+    SET
+      "position"  = ((o.ord - 1) * 100)::int,
+      "status"    = ${params.toStatus}::"IssueStatus",
+      "updatedAt" = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+    FROM ordered AS o
+    WHERE i."id" = o.id
+      AND i."workspaceId" = ${params.workspaceId}
+  `;
 }
