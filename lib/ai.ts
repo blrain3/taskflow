@@ -3,11 +3,11 @@ import "server-only";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
-import { env } from "@/lib/env";
+import { disabledFeatures, env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { consumeRateLimit } from "@/lib/rate-limit";
-import { generatedSubtaskSchema } from "@/lib/validation";
+import { parseAndValidateSubtasks } from "@/lib/ai-parser";
 import type { GeneratedSubtask } from "@/types/issue";
 
 /**
@@ -101,7 +101,7 @@ async function callMock(
   prompt: string,
   abortSignal: AbortSignal
 ): Promise<{ subtasks: GeneratedSubtask[]; usage: BreakdownUsage }> {
-  // Mock 模式：prompt 关键字驱动分支，便于冒烟覆盖成功/超时/无效输出三类
+  // Mock 模式：prompt 关键字驱动分支，便于冒烟覆盖成功/超时/无效输出/条数不足四类
   if (/TIMEOUT/i.test(prompt)) {
     // 一直等到超时控制真正 abort，从而走通「AbortController → AI_TIMEOUT」这条真实链路
     await new Promise<never>((_, reject) => {
@@ -114,6 +114,17 @@ async function callMock(
   if (/INVALID/i.test(prompt)) {
     // 故意返回无法被 Zod 解析的内容
     const subtasks = parseAndValidateSubtasks("这不是 JSON 输出");
+    return { subtasks, usage: mockUsage(prompt, subtasks) };
+  }
+
+  if (/TOOFEW/i.test(prompt)) {
+    // 故意返回 2 条：能被逐条解析，但违反「3-10 条」的条数契约
+    const subtasks = parseAndValidateSubtasks(
+      JSON.stringify([
+        { title: "只有两条子任务的第一条", description: null },
+        { title: "只有两条子任务的第二条", description: null },
+      ])
+    );
     return { subtasks, usage: mockUsage(prompt, subtasks) };
   }
 
@@ -132,42 +143,8 @@ function mockUsage(prompt: string, subtasks: GeneratedSubtask[]): BreakdownUsage
   };
 }
 
-/** 从模型输出文本里抠出 JSON 数组；解析失败/字段不合格一律抛 AI_INVALID_OUTPUT */
-function parseAndValidateSubtasks(text: string): GeneratedSubtask[] {
-  const match = text.match(/\[[\s\S]*\]/);
-  if (!match) {
-    throw new AppError("AI_INVALID_OUTPUT", { detail: "AI 输出不含 JSON 数组" });
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch (error) {
-    throw new AppError("AI_INVALID_OUTPUT", { detail: "JSON 解析失败", cause: error });
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new AppError("AI_INVALID_OUTPUT", { detail: "AI 输出顶层不是数组" });
-  }
-
-  const subtasks: GeneratedSubtask[] = [];
-  for (const item of parsed) {
-    const result = generatedSubtaskSchema.safeParse(item);
-    if (!result.success) {
-      throw new AppError("AI_INVALID_OUTPUT", { detail: result.error.message });
-    }
-    subtasks.push({
-      title: result.data.title,
-      description: result.data.description ?? null,
-    });
-  }
-
-  if (subtasks.length === 0) {
-    throw new AppError("AI_INVALID_OUTPUT", { detail: "AI 返回空数组" });
-  }
-
-  return subtasks;
-}
+/** 从模型输出文本里抠出 JSON 数组；解析失败、字段不合格、条数不合规一律抛 AI_INVALID_OUTPUT */
+export { parseAndValidateSubtasks } from "@/lib/ai-parser";
 
 /**
  * 拆分入口：限流 → 调用（含一次瞬时故障重试）→ 校验 → 记 Token。
@@ -179,8 +156,14 @@ export async function breakdownSubtasks(prompt: string, userId: string): Promise
   }
 
   const provider = env.AI_PROVIDER;
-  if (provider === "openai" && !env.AI_API_KEY) {
-    throw new AppError("AI_DISABLED", { message: "AI 服务未启用：AI_API_KEY 未配置" });
+  if (provider === "openai") {
+    const disabled = disabledFeatures().find((item) => item.feature === "ai");
+    if (disabled) {
+      throw new AppError("AI_DISABLED", {
+        message: `AI 服务未启用：缺少 ${disabled.missing.join("、")}`,
+        detail: { missing: disabled.missing },
+      });
+    }
   }
 
   // 限流放在参数校验之后、真正调用之前：无效请求不占额度
@@ -219,7 +202,11 @@ export async function breakdownSubtasks(prompt: string, userId: string): Promise
       }
 
       lastError = error;
-      console.error(`[ai] 第 ${attempt} 次调用失败`, error);
+      console.error("[ai] 上游调用失败", {
+        provider,
+        attempt,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
     } finally {
       clearTimeout(timeout);
     }

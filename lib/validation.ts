@@ -107,18 +107,34 @@ export const moveIssueSchema = z.object({
 
 /**
  * AI 拆分子任务契约（P0-10 / P0-11）。
- * 服务端与 AI 输出共用：AI 输出的每条记录必先通过 generatedSubtaskSchema，
- * 用户在面板上编辑/删除后，通过 createIssuesFromSubtasksSchema 提交批量创建。
+ * 单条记录由 generatedSubtaskSchema 约束；**条数下限分两处**：
+ * - AI 输出走 aiOutputSubtasksSchema（3-10，校验上游质量）；
+ * - 用户确认提交走 generatedSubtasksSchema（1-10，尊重用户删减）。
+ * 这两者刻意不同，混用会让「删除候选」变成一条死路。
  */
 export const generatedSubtaskSchema = z.object({
   title: issueTitleSchema,
   description: issueDescriptionSchema.optional(),
 });
 
+/**
+ * AI 输出的条数契约：Prompt 要求 3-10 条，这里做强制校验，
+ * 让「返回 3-10 条结构化子任务」这条对外契约真正成立——条数不合规等于输出不可用（零写入）。
+ */
+export const aiOutputSubtasksSchema = z
+  .array(generatedSubtaskSchema)
+  .min(3, { error: "AI 输出少于 3 条子任务" })
+  .max(10, { error: "AI 输出超过 10 条子任务" });
+
+/**
+ * 批量创建的入参契约：**允许删到 1 条**。
+ * 用户在确认前有权只保留自己认可的子任务（验收要求「结果可查看/编辑/删除单条」），
+ * 所以这里不能沿用 AI 侧的 3 条下限——否则用户删到 2 条后点确认会得到一个无法自救的报错。
+ */
 export const generatedSubtasksSchema = z
   .array(generatedSubtaskSchema)
-  .min(1, { error: "至少需要一条子任务" })
-  .max(20, { error: "单次最多 20 条子任务" });
+  .min(1, { error: "至少需要保留一条子任务" })
+  .max(10, { error: "单次最多创建 10 条子任务" });
 
 /**
  * 批量创建入参（P0-11）。
@@ -146,6 +162,7 @@ export type DeleteIssueInput = z.infer<typeof deleteIssueSchema>;
 export type MoveIssueInput = z.infer<typeof moveIssueSchema>;
 export type GeneratedSubtaskInput = z.infer<typeof generatedSubtaskSchema>;
 export type CreateIssuesFromSubtasksInput = z.infer<typeof createIssuesFromSubtasksSchema>;
+export type AiOutputSubtasks = z.infer<typeof aiOutputSubtasksSchema>;
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

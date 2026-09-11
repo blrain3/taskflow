@@ -472,6 +472,15 @@ async function runAiChecks(primaryJar) {
     `http=${invalidResponse.status} code=${invalidBody?.error?.code ?? "无"}`
   );
 
+  // 5b. 条数不足分支：能逐条解析但只有 2 条，违反「3-10 条」契约，同样必须 502
+  const tooFewResponse = await post("TOOFEW 请拆解这段工作内容", primaryJar.header());
+  const tooFewBody = await tooFewResponse.json();
+  check(
+    "AI 拆分：条数不足 3 条返回 502（零写入）",
+    tooFewResponse.status === 502 && tooFewBody?.error?.code === "AI_INVALID_OUTPUT",
+    `http=${tooFewResponse.status} code=${tooFewBody?.error?.code ?? "无"}`
+  );
+
   // 6. 超时分支：504，走真实 AbortController 链路
   const timeoutResponse = await post("TIMEOUT 请拆解这段工作内容", primaryJar.header());
   const timeoutBody = await timeoutResponse.json();
