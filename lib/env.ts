@@ -9,6 +9,11 @@ import "server-only";
  * 2. 变量缺失时给出可操作的报错，而不是让下游抛出难以定位的异常。
  * 3. 采用惰性读取（getter）：模块可被安全 import，只有真正使用某个变量时才校验，
  *    避免 `next build` 在没有 .env 的环境下整站失败。
+ *
+ * 变量分两级：
+ * - REQUIRED_ENV_KEYS：缺失会导致服务整体不可用（连不上库、无法签发会话）。
+ * - OPTIONAL_FEATURE_ENV：只影响某一项能力。缺失时该功能不可用，但服务本身是健康的——
+ *   例如 AI_API_KEY 在 Sprint 3 落地前本就为空，不应因此把容器判成 unhealthy。
  */
 
 type EnvKey =
@@ -24,14 +29,15 @@ const HINTS: Record<EnvKey, string> = {
   AI_TIMEOUT_MS: "AI 调用超时毫秒数，默认 30000",
 };
 
-/** 必需变量清单，用于一次性报告缺失项（健康检查与开发提示） */
-export const REQUIRED_ENV_KEYS: readonly EnvKey[] = [
-  "DATABASE_URL",
-  "AUTH_SECRET",
-  "AI_BASE_URL",
-  "AI_API_KEY",
-  "AI_MODEL",
+/** 缺失即服务不可用 */
+export const REQUIRED_ENV_KEYS: readonly EnvKey[] = ["DATABASE_URL", "AUTH_SECRET"];
+
+/** 按能力分组的可选变量；整组缺失时对应功能关闭 */
+export const OPTIONAL_FEATURE_ENV: ReadonlyArray<{ feature: string; keys: readonly EnvKey[] }> = [
+  { feature: "ai", keys: ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"] },
 ];
+
+export type DisabledFeature = { feature: string; missing: string[] };
 
 function rawValue(key: EnvKey): string | undefined {
   const value = process.env[key];
@@ -59,6 +65,17 @@ function read(key: EnvKey): string {
 /** 返回当前缺失的必需变量名列表；不抛错，供健康检查与启动自检使用 */
 export function missingEnvKeys(): EnvKey[] {
   return REQUIRED_ENV_KEYS.filter((key) => rawValue(key) === undefined);
+}
+
+/**
+ * 返回因变量缺失而不可用的功能。
+ * 整组变量缺任意一个都算该功能关闭，并列出具体缺哪几个。
+ */
+export function disabledFeatures(): DisabledFeature[] {
+  return OPTIONAL_FEATURE_ENV.flatMap(({ feature, keys }) => {
+    const missing = keys.filter((key) => rawValue(key) === undefined);
+    return missing.length > 0 ? [{ feature, missing }] : [];
+  });
 }
 
 /** 惰性读取的服务端环境变量。任何访问都会在缺失时抛出带修复步骤的错误。 */

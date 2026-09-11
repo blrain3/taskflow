@@ -7,14 +7,17 @@ import { env } from "@/lib/env";
 /**
  * Prisma Client 单例。
  *
- * 为什么需要单例：Next.js 开发模式会热重载模块，若每次都 new PrismaClient()
- * 会累积数据库连接直到连接池耗尽。
+ * 为什么不是模块级常量：DATABASE_URL 属于运行时配置，lib/env.ts 的校验刻意做成惰性的。
+ * 若在模块加载期就构造客户端，`next build` 的「Collecting page data」阶段会读取
+ * DATABASE_URL 并直接构建失败——而构建环境（Docker build 阶段、CI）本来就不该持有数据库凭据。
+ * 因此改为首次使用时才构造。
  *
- * 连接串显式取自 lib/env.ts，好处是缺失 DATABASE_URL 时抛出的是带修复步骤的错误，
- * 而不是 Prisma 内部的 P1012 校验失败。
+ * 为什么需要单例：Next.js 开发模式会热重载模块，重复 new 会累积连接直到连接池耗尽。
  */
 
 const globalForPrisma = globalThis as unknown as { __taskflowPrisma?: PrismaClient };
+
+let cachedClient: PrismaClient | undefined;
 
 function createPrismaClient(): PrismaClient {
   return new PrismaClient({
@@ -23,8 +26,20 @@ function createPrismaClient(): PrismaClient {
   });
 }
 
-export const prisma: PrismaClient = globalForPrisma.__taskflowPrisma ?? createPrismaClient();
+/** 取得 Prisma Client 单例。首次调用时才读取 DATABASE_URL 并建立客户端。 */
+export function getPrisma(): PrismaClient {
+  if (cachedClient) return cachedClient;
 
-if (!env.isProduction) {
-  globalForPrisma.__taskflowPrisma = prisma;
+  const existing = globalForPrisma.__taskflowPrisma;
+  if (existing) {
+    cachedClient = existing;
+    return cachedClient;
+  }
+
+  const created = createPrismaClient();
+  if (!env.isProduction) {
+    globalForPrisma.__taskflowPrisma = created;
+  }
+  cachedClient = created;
+  return cachedClient;
 }

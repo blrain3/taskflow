@@ -57,7 +57,9 @@ model Account {
   @@index([userId])
 }
 
-/// 会话持久化表。sessionToken 的 @unique 已提供索引，每次请求的会话校验依赖它。
+/// 会话持久化表。
+/// MVP 采用 Auth.js 的 JWT 会话策略（Credentials Provider 的硬性约束），该表不会被写入，
+/// 保留它是为了后续接入 OAuth Provider 或实现「登出所有设备」时无需改 Schema。见 adr-001 §4。
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
