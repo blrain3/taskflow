@@ -185,18 +185,20 @@ export async function moveIssueWithinWorkspace(params: MoveIssueParams): Promise
     const appended = columnRows.filter((row) => !known.has(row.id)).map((row) => row.id);
     const fullOrder = [...orderedInColumn, ...appended];
 
-    // 3. 被拖卡片改状态（列内排序时状态不变，重复写入无副作用）
-    await tx.issue.updateMany({
-      where: { id: params.issueId, workspaceId: params.workspaceId },
-      data: { status: params.toStatus },
-    });
+    // 3. 单条 SQL 完成「改状态 + 整列重写 position」（原步骤 3 + 步骤 4）。
+    //    用 WITH ORDINALITY 把数组下标变成序号列，行集合由 JOIN 决定、恰为 fullOrder，
+    //    不会误伤并发插入的卡片；position 步长仍为 100。
+    const affected = await tx.$executeRaw(
+      buildMoveIssueUpdate({
+        fullOrder,
+        toStatus: params.toStatus,
+        workspaceId: params.workspaceId,
+      })
+    );
 
-    // 4. 整列重写 position（步长 100，为未来的无拖拽插入留中缝）
-    for (let index = 0; index < fullOrder.length; index += 1) {
-      await tx.issue.update({
-        where: { id: fullOrder[index] },
-        data: { position: index * 100 },
-      });
+    // 4. 行数断言：并发删除会让实际写入行数少于预期，必须与现状一样失败，而不是静默成功。
+    if (affected !== fullOrder.length) {
+      throw new AppError("NOT_FOUND");
     }
   });
 }
