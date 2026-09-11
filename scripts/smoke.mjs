@@ -9,6 +9,8 @@
  *  4. 带会话可访问受保护页面，且页面内容来自数据库
  *  5. 未登录时 /api/auth/session 返回空
  *  6. 登出后会话失效
+ *  7. 第 2/3 梯队：Issue CRUD、列表与看板 SSR、跨 Workspace 越权
+ *  8. 第 4 梯队：AI 拆分（mock 成功 / 无效输出 / 超时 / 限流）与 AI 面板 SSR
  *
  * 用法：
  *  node scripts/smoke.mjs                 # 默认 http://localhost:3000
@@ -371,6 +373,136 @@ async function runIssueCrudChecks(primaryJar, primaryUserId) {
   );
 }
 
+/** 读取 .env 中的单个键；进程环境优先，取不到则用兜底值 */
+function loadEnvValue(key, fallback) {
+  if (process.env[key] !== undefined && process.env[key] !== "") return process.env[key];
+
+  try {
+    const text = readFileSync(new URL("../.env", import.meta.url), "utf8");
+    const line = text.split(/\r?\n/).find((row) => row.trim().startsWith(`${key}=`));
+    if (!line) return fallback;
+    return line
+      .slice(line.indexOf("=") + 1)
+      .trim()
+      .replace(/^["']|["']$/g, "");
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * 第 4 梯队：AI 拆分（P0-10）与限流。
+ *
+ * 前置：服务端 AI_PROVIDER=mock（或已配置 AI_API_KEY）。mock 模式下 prompt 关键字驱动分支：
+ * 含 INVALID → 上游输出不合法；含 TIMEOUT → 上游挂起直到 AbortController 触发（真实超时链路）。
+ *
+ * 限流用例刻意换一个账号：限流按 userId 分桶，用独立账号才能在不干扰功能用例的前提下把额度打满。
+ */
+async function runAiChecks(primaryJar) {
+  const endpoint = `${BASE_URL}/api/ai/breakdown`;
+  const post = (prompt, cookieHeader) =>
+    fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+      },
+      body: JSON.stringify({ prompt }),
+    });
+
+  // 0. 前置：AI 能力必须是启用的，否则后面的断言失败会指向环境问题而不是代码问题
+  const health = await (await fetch(`${BASE_URL}/api/health`)).json();
+  const aiDisabled = (health.disabledFeatures ?? []).includes("ai");
+  check(
+    "AI 能力已启用（AI_PROVIDER=mock 或已配置 AI_API_KEY）",
+    !aiDisabled,
+    `disabledFeatures=${JSON.stringify(health.disabledFeatures ?? [])}`
+  );
+
+  // 1. 面板必须出现在任务页 SSR 输出里（无 JS 时也能看到入口）
+  const page = await fetchPage(`${BASE_URL}/issues`, primaryJar.header());
+  check(
+    "AI 面板已渲染在任务页（SSR 输出）",
+    page.status === 200 &&
+      page.html.includes("AI 拆分任务") &&
+      page.html.includes('id="ai-prompt"'),
+    `http=${page.status}`
+  );
+
+  // 2. 未登录：401
+  const anon = await post("把这段工作拆成可执行的子任务");
+  check("AI 拆分：未登录返回 401", anon.status === 401, `http=${anon.status}`);
+
+  // 3. 过短 prompt：400，且不消耗额度
+  const shortResponse = await post("太短", primaryJar.header());
+  const shortBody = await shortResponse.json();
+  check(
+    "AI 拆分：过短 prompt 被拒（400）",
+    shortResponse.status === 400 && shortBody?.error?.code === "VALIDATION_FAILED",
+    `http=${shortResponse.status} code=${shortBody?.error?.code ?? "无"}`
+  );
+
+  // 4. 正常分支：结构化子任务 + Token 统计
+  const okResponse = await post(
+    "实现用户资料页：头像上传、昵称修改、密码重置",
+    primaryJar.header()
+  );
+  const okBody = await okResponse.json();
+  const subtasks = okBody?.data?.subtasks;
+  check(
+    "AI 拆分（mock）：返回结构化子任务与 Token 统计",
+    okResponse.status === 200 &&
+      okBody?.ok === true &&
+      Array.isArray(subtasks) &&
+      subtasks.length > 0 &&
+      typeof subtasks[0]?.title === "string" &&
+      subtasks[0].title.length > 0 &&
+      typeof okBody?.data?.usage?.totalTokens === "number",
+    `http=${okResponse.status} 条数=${Array.isArray(subtasks) ? subtasks.length : "无"} ` +
+      `tokens=${okBody?.data?.usage?.totalTokens ?? "无"}`
+  );
+
+  // 5. 无效输出分支：502，且不得写库
+  const invalidResponse = await post("INVALID 请拆解这段工作内容", primaryJar.header());
+  const invalidBody = await invalidResponse.json();
+  check(
+    "AI 拆分：输出不合 Schema 返回 502（零写入）",
+    invalidResponse.status === 502 && invalidBody?.error?.code === "AI_INVALID_OUTPUT",
+    `http=${invalidResponse.status} code=${invalidBody?.error?.code ?? "无"}`
+  );
+
+  // 6. 超时分支：504，走真实 AbortController 链路
+  const timeoutResponse = await post("TIMEOUT 请拆解这段工作内容", primaryJar.header());
+  const timeoutBody = await timeoutResponse.json();
+  check(
+    "AI 拆分：超时返回 504（AbortController 链路）",
+    timeoutResponse.status === 504 && timeoutBody?.error?.code === "AI_TIMEOUT",
+    `http=${timeoutResponse.status} code=${timeoutBody?.error?.code ?? "无"}`
+  );
+
+  // 7. 限流：独立账号把额度打满，第 limit+1 次必须 429
+  const limit = Number(loadEnvValue("AI_RATE_LIMIT_PER_MINUTE", "10"));
+  const secondJar = new CookieJar();
+  await signInWith(secondJar, SECOND_EMAIL, SECOND_PASSWORD);
+  await fetchPage(`${BASE_URL}/issues`, secondJar.header()); // 触发该账号的 Workspace 初始化
+
+  let allowed = 0;
+  let limitedStatus = 0;
+  for (let index = 0; index < limit + 1; index += 1) {
+    const response = await post(
+      `限流验证第 ${index + 1} 次调用，请拆解这段工作`,
+      secondJar.header()
+    );
+    if (response.status === 200) allowed += 1;
+    else limitedStatus = response.status;
+  }
+  check(
+    `AI 限流：每分钟第 ${limit + 1} 次调用被拒（429）`,
+    allowed === limit && limitedStatus === 429,
+    `放行=${allowed}/${limit} 超限响应=${limitedStatus}`
+  );
+}
+
 async function main() {
   console.log(`冒烟目标：${BASE_URL}\n`);
   const userId = await seedTestUser();
@@ -464,6 +596,9 @@ async function main() {
 
   // 7. 第 2 梯队：Issue CRUD 与跨 Workspace 越权
   await runIssueCrudChecks(jar, userId);
+
+  // 7b. 第 4 梯队：AI 拆分与限流
+  await runAiChecks(jar);
 
   // 8. 登出后会话失效
   const signOutCsrf = await fetch(`${BASE_URL}/api/auth/csrf`, {
