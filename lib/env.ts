@@ -27,7 +27,8 @@ type EnvKey =
   | "AI_RATE_LIMIT_PER_MINUTE"
   | "AUTH_LOGIN_RATE_LIMIT_PER_MINUTE"
   | "AUTH_IP_RATE_LIMIT_PER_MINUTE"
-  | "AUTH_REGISTER_RATE_LIMIT_PER_MINUTE";
+  | "AUTH_REGISTER_RATE_LIMIT_PER_MINUTE"
+  | "TRUST_PROXY";
 
 export type AiProvider = "openai" | "mock";
 
@@ -48,6 +49,7 @@ const HINTS: Record<EnvKey, string> = {
     "同一来源 IP 每分钟允许的登录尝试次数，默认 30。需反向代理覆写 X-Forwarded-For 才可信",
   AUTH_REGISTER_RATE_LIMIT_PER_MINUTE:
     "同一来源 IP 每分钟允许的注册尝试次数，默认 5。每次尝试都计数（成功不退还额度）",
+  TRUST_PROXY: "是否信任反向代理注入的 X-Forwarded-For / X-Real-IP，生产环境默认关闭",
 };
 
 /** 缺失即服务不可用 */
@@ -174,6 +176,13 @@ export const env = {
   /** 注册限流：同一来源 IP 每分钟允许的尝试次数（bcrypt 成本落在成功路径上，故每次尝试都计数） */
   get AUTH_REGISTER_RATE_LIMIT_PER_MINUTE(): number {
     return readPositiveInt("AUTH_REGISTER_RATE_LIMIT_PER_MINUTE", 5);
+  },
+  get TRUST_PROXY(): boolean {
+    const value = rawValue("TRUST_PROXY");
+    if (value === undefined) return false;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    throw new Error(`[env] TRUST_PROXY 必须是 true 或 false，当前值：${JSON.stringify(value)}`);
   },
   get isProduction(): boolean {
     return process.env.NODE_ENV === "production";

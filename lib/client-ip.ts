@@ -2,6 +2,8 @@ import "server-only";
 
 import { headers } from "next/headers";
 
+import { env } from "@/lib/env";
+
 /**
  * 取客户端 IP，用于「按来源」限流。
  *
@@ -26,6 +28,8 @@ export function parseClientIp(raw: string | null | undefined): string | null {
 }
 
 export async function clientIpKey(): Promise<string> {
+  // 生产环境只有明确开启可信代理时才读取转发头，避免直连客户端伪造限流维度。
+  if (env.isProduction && !env.TRUST_PROXY) return "unknown";
   const store = await headers();
 
   for (const name of IP_HEADERS) {

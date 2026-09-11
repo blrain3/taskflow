@@ -42,16 +42,20 @@ export async function GET() {
   const healthy = missingEnv.length === 0 && database === "up";
 
   return Response.json(
-    {
-      status: healthy ? "ok" : "degraded",
-      service: "taskflow",
-      database,
-      ...(databaseError ? { databaseError } : {}),
-      missingEnv,
-      disabledFeatures: disabled.map((item) => item.feature),
-      ...(disabled.length > 0 ? { disabledFeatureDetails: disabled } : {}),
-      timestamp: new Date().toISOString(),
-    },
+    env.isProduction
+      ? {
+          status: healthy ? "ok" : "degraded",
+        }
+      : {
+          status: healthy ? "ok" : "degraded",
+          service: "taskflow",
+          database,
+          ...(databaseError ? { databaseError } : {}),
+          missingEnv,
+          disabledFeatures: disabled.map((item) => item.feature),
+          ...(disabled.length > 0 ? { disabledFeatureDetails: disabled } : {}),
+          timestamp: new Date().toISOString(),
+        },
     { status: healthy ? 200 : 503 }
   );
 }

@@ -1,4 +1,5 @@
 import { parseAndValidateSubtasks } from "@/lib/ai-parser";
+import { isRetryableAiError } from "@/lib/ai-retry";
 
 describe("AI output parsing", () => {
   test("extracts and normalizes a valid JSON array", () => {
@@ -21,5 +22,21 @@ describe("AI output parsing", () => {
     } catch (error) {
       expect(error).toMatchObject({ code: "AI_INVALID_OUTPUT" });
     }
+  });
+});
+
+describe("AI retry classification", () => {
+  test("retries upstream 5xx errors", () => {
+    const error = Object.assign(new Error("upstream"), { status: 503 });
+    expect(isRetryableAiError(error)).toBe(true);
+  });
+
+  test("does not retry authentication or request errors", () => {
+    expect(isRetryableAiError(Object.assign(new Error("unauthorized"), { status: 401 }))).toBe(
+      false
+    );
+    expect(isRetryableAiError(Object.assign(new Error("bad request"), { status: 400 }))).toBe(
+      false
+    );
   });
 });

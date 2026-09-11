@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop", "feature/**", "fix/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: lint / format / build
+    runs-on: ubuntu-latest
+
+    # 这些值仅用于让构建期能完成环境校验，不具备任何真实权限。
+    # 真实的 DATABASE_URL / AUTH_SECRET / AI_API_KEY 只存在于本地 .env 与服务器。
+    env:
+      DATABASE_URL: postgresql://taskflow:taskflow@localhost:5432/taskflow?schema=public
+      AUTH_SECRET: ci-only-placeholder-secret
+      AI_BASE_URL: https://api.deepseek.com/v1
+      AI_API_KEY: ci-only-placeholder-key
+      AI_MODEL: deepseek-chat
+      AI_TIMEOUT_MS: "30000"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Prettier
+        run: npx prettier --check .
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      # Sprint 1 起追加：
+      #   - name: Unit tests    run: npm run test
+      #   - name: E2E tests     run: npm run test:e2e

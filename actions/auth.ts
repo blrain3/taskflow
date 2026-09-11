@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { signIn, signOut } from "@/lib/auth";
 import { clientIpKey } from "@/lib/client-ip";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { env } from "@/lib/env";
 import { toActionError } from "@/lib/errors";
 import { hashPassword } from "@/lib/password";
@@ -131,6 +132,13 @@ export async function registerAccount(
       label: "auth:register:ip",
     });
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return failure({
+        code: "CONFLICT",
+        message: "该邮箱已注册",
+        fields: { email: "该邮箱已注册，请直接登录" },
+      });
+    }
     return failure(toActionError(error));
   }
 

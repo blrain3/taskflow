@@ -4,6 +4,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
 import { disabledFeatures, env } from "@/lib/env";
+import { isUniqueViolation } from "@/lib/db-errors";
+import { isRetryableAiError } from "@/lib/ai-retry";
 import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { consumeRateLimit } from "@/lib/rate-limit";
@@ -30,6 +32,9 @@ import type { GeneratedSubtask } from "@/types/issue";
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_ATTEMPTS = 2;
+
+/** 只允许明确的瞬时故障重试，认证/参数类错误不应重复消耗上游额度。 */
+export { isRetryableAiError } from "@/lib/ai-retry";
 
 export type BreakdownUsage = {
   promptTokens: number;
@@ -201,6 +206,8 @@ export async function breakdownSubtasks(prompt: string, userId: string): Promise
         throw new AppError("AI_TIMEOUT");
       }
 
+      if (!isRetryableAiError(error))
+        throw new AppError("INTERNAL", { detail: "AI 上游请求失败", cause: error });
       lastError = error;
       console.error("[ai] 上游调用失败", {
         provider,
@@ -220,16 +227,6 @@ export type BatchCreateResult = {
   /** true 表示这次请求命中了幂等键，未产生新数据 */
   duplicate: boolean;
 };
-
-/** Prisma 唯一约束冲突（P2002）。用于把并发重复提交收敛成「已创建」而不是 500 */
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "P2002"
-  );
-}
 
 /**
  * 批量事务创建（P0-11）。

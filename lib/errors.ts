@@ -67,7 +67,10 @@ export function toActionError(error: unknown): ActionError {
     };
   }
 
-  console.error("[action-error] 未预期异常", error);
+  console.error("[action-error] 未预期异常", {
+    name: error instanceof Error ? error.name : "UnknownError",
+    message: error instanceof Error ? error.message : "non-error value",
+  });
   return { code: "INTERNAL", message: SAFE_MESSAGES.INTERNAL };
 }
 
