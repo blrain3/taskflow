@@ -24,7 +24,10 @@ type EnvKey =
   | "AI_MODEL"
   | "AI_TIMEOUT_MS"
   | "AI_PROVIDER"
-  | "AI_RATE_LIMIT_PER_MINUTE";
+  | "AI_RATE_LIMIT_PER_MINUTE"
+  | "AUTH_LOGIN_RATE_LIMIT_PER_MINUTE"
+  | "AUTH_IP_RATE_LIMIT_PER_MINUTE"
+  | "AUTH_REGISTER_RATE_LIMIT_PER_MINUTE";
 
 export type AiProvider = "openai" | "mock";
 
@@ -39,6 +42,12 @@ const HINTS: Record<EnvKey, string> = {
   AI_PROVIDER:
     "AI 提供方：openai（默认，需 AI_API_KEY）或 mock（本地离线开发与冒烟用，不依赖外部服务）",
   AI_RATE_LIMIT_PER_MINUTE: "每个用户每分钟允许的 AI 调用次数，默认 10。本地冒烟可调小以复现限流",
+  AUTH_LOGIN_RATE_LIMIT_PER_MINUTE:
+    "同一邮箱每分钟允许的登录失败次数，默认 10。只统计失败，登录成功即清零",
+  AUTH_IP_RATE_LIMIT_PER_MINUTE:
+    "同一来源 IP 每分钟允许的登录尝试次数，默认 30。需反向代理覆写 X-Forwarded-For 才可信",
+  AUTH_REGISTER_RATE_LIMIT_PER_MINUTE:
+    "同一来源 IP 每分钟允许的注册尝试次数，默认 5。每次尝试都计数（成功不退还额度）",
 };
 
 /** 缺失即服务不可用 */
@@ -76,6 +85,20 @@ function read(key: EnvKey): string {
     );
   }
   return value;
+}
+
+/** 读取正整数配置；未配置时用兜底值，配置非法时给出可操作的报错 */
+function readPositiveInt(key: EnvKey, fallback: number): number {
+  const value = rawValue(key);
+  if (value === undefined) return fallback;
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `[env] ${key} 必须是正整数，当前值：${JSON.stringify(value)}（用途：${HINTS[key]}）`
+    );
+  }
+  return parsed;
 }
 
 /** 返回当前缺失的必需变量名列表；不抛错，供健康检查与启动自检使用 */
@@ -138,15 +161,19 @@ export const env = {
   },
   /** AI 限流：每个用户每分钟允许次数。未配置时 10 次 */
   get AI_RATE_LIMIT_PER_MINUTE(): number {
-    const value = rawValue("AI_RATE_LIMIT_PER_MINUTE");
-    if (value === undefined) return 10;
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error(
-        `[env] AI_RATE_LIMIT_PER_MINUTE 必须是正整数，当前值：${JSON.stringify(value)}（${HINTS.AI_RATE_LIMIT_PER_MINUTE}）`
-      );
-    }
-    return parsed;
+    return readPositiveInt("AI_RATE_LIMIT_PER_MINUTE", 10);
+  },
+  /** 登录限流：同一邮箱每分钟允许的失败次数。只统计失败，成功即清零 */
+  get AUTH_LOGIN_RATE_LIMIT_PER_MINUTE(): number {
+    return readPositiveInt("AUTH_LOGIN_RATE_LIMIT_PER_MINUTE", 10);
+  },
+  /** 登录限流：同一来源 IP 每分钟允许的尝试次数（第二道防线，依赖代理覆写请求头） */
+  get AUTH_IP_RATE_LIMIT_PER_MINUTE(): number {
+    return readPositiveInt("AUTH_IP_RATE_LIMIT_PER_MINUTE", 30);
+  },
+  /** 注册限流：同一来源 IP 每分钟允许的尝试次数（bcrypt 成本落在成功路径上，故每次尝试都计数） */
+  get AUTH_REGISTER_RATE_LIMIT_PER_MINUTE(): number {
+    return readPositiveInt("AUTH_REGISTER_RATE_LIMIT_PER_MINUTE", 5);
   },
   get isProduction(): boolean {
     return process.env.NODE_ENV === "production";

@@ -15,7 +15,7 @@ export function RegisterForm() {
   const formMessage = error && !fields ? error.message : undefined;
 
   return (
-    <form action={formAction} className="space-y-4" noValidate>
+    <form id="register-form" action={formAction} className="space-y-4" noValidate>
       <div>
         <label className="block text-sm font-medium text-zinc-800" htmlFor="name">
           昵称

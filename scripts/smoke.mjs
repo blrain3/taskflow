@@ -11,6 +11,7 @@
  *  6. 登出后会话失效
  *  7. 第 2/3 梯队：Issue CRUD、列表与看板 SSR、跨 Workspace 越权
  *  8. 第 4 梯队：AI 拆分（mock 成功 / 无效输出 / 超时 / 限流）与 AI 面板 SSR
+ *  9. 认证限流：登录按邮箱的失败计数、换邮箱不受影响、注册按 IP 的尝试计数
  *
  * 用法：
  *  node scripts/smoke.mjs                 # 默认 http://localhost:3000
@@ -195,7 +196,7 @@ function hiddenFieldsOf(formHtml) {
   return fields;
 }
 
-async function submitForm(url, formHtml, extraFields, cookieHeader) {
+async function submitForm(url, formHtml, extraFields, cookieHeader, extraHeaders = {}) {
   if (!formHtml) throw new Error("未找到目标表单，无法提交");
 
   const body = new FormData();
@@ -204,7 +205,7 @@ async function submitForm(url, formHtml, extraFields, cookieHeader) {
 
   return fetch(url, {
     method: "POST",
-    headers: { cookie: cookieHeader },
+    headers: { cookie: cookieHeader, ...extraHeaders },
     body,
     redirect: "manual",
   });
@@ -503,6 +504,119 @@ async function runAiChecks(primaryJar) {
   );
 }
 
+/**
+ * 第 4 梯队补充：认证限流（P0-01 加固）。
+ *
+ * 覆盖两点，都用**独立 IP 标记 + 独立邮箱**，保证可重复运行（不污染其它用例的桶）：
+ * 1. 登录：同一邮箱连续失败到额度上限后，下一次必须被拒；换邮箱不受影响
+ *    （证明邮箱桶独立，且「只对失败计数」不会误伤同一 IP 下的其他人）。
+ * 2. 注册：同一 IP 连续尝试到额度上限后必须被拒。用已注册邮箱反复提交，
+ *    返回 CONFLICT 而不产生新用户 —— 既验证限流又不污染数据库。
+ *
+ * 注意：本地无反向代理，x-forwarded-for 会原样透传，所以这里可以自己指定；
+ * 生产必须由 Nginx 覆写该头，否则按 IP 的限流可被伪造（详见 lib/client-ip.ts）。
+ */
+async function runAuthRateLimitChecks() {
+  const loginLimit = Number(loadEnvValue("AUTH_LOGIN_RATE_LIMIT_PER_MINUTE", "10"));
+  const registerLimit = Number(loadEnvValue("AUTH_REGISTER_RATE_LIMIT_PER_MINUTE", "5"));
+
+  const loginIp = `smoke-ip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const loginHeaders = { "x-forwarded-for": loginIp };
+  const email = `smoke-ratelimit-${Date.now()}@taskflow.local`;
+
+  const loginPage = await fetchPage(`${BASE_URL}/login`, "");
+  const loginForm = extractForm(loginPage.html, "login-form");
+  check(
+    "登录页渲染出可回放的登录表单",
+    loginPage.status === 200 && Boolean(loginForm),
+    `http=${loginPage.status}`
+  );
+
+  let blockedAt = 0;
+  for (let attempt = 1; attempt <= loginLimit + 1; attempt += 1) {
+    const response = await submitForm(
+      `${BASE_URL}/login`,
+      loginForm,
+      { email, password: "WrongPassword123" },
+      "",
+      loginHeaders
+    );
+    const html = await response.text();
+    if (html.includes("操作过于频繁")) {
+      blockedAt = attempt;
+      break;
+    }
+  }
+  check(
+    `登录限流：同一邮箱第 ${loginLimit + 1} 次失败被拒`,
+    blockedAt === loginLimit + 1,
+    blockedAt === 0 ? "始终未被限流" : `实际在第 ${blockedAt} 次被拒`
+  );
+
+  // 换邮箱：邮箱桶独立；同一 IP 的额度也还没打满，因此应看到「密码不正确」而非限流
+  const otherEmail = `smoke-ratelimit-b-${Date.now()}@taskflow.local`;
+  const otherResponse = await submitForm(
+    `${BASE_URL}/login`,
+    loginForm,
+    { email: otherEmail, password: "WrongPassword123" },
+    "",
+    loginHeaders
+  );
+  const otherHtml = await otherResponse.text();
+  check(
+    "登录限流：换邮箱不受影响（邮箱桶独立）",
+    otherHtml.includes("邮箱或密码不正确") && !otherHtml.includes("操作过于频繁"),
+    otherHtml.includes("操作过于频繁") ? "被同 IP 桶误伤" : ""
+  );
+
+  // 同一邮箱、换 IP：证明攻击者打满自己那份额度后，无法把真实用户锁在门外
+  const victimIp = `smoke-ip-victim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const victimResponse = await submitForm(
+    `${BASE_URL}/login`,
+    loginForm,
+    { email, password: "WrongPassword123" },
+    "",
+    { "x-forwarded-for": victimIp }
+  );
+  const victimHtml = await victimResponse.text();
+  check(
+    "登录限流：同一邮箱换 IP 不受影响（无法被锁号）",
+    victimHtml.includes("邮箱或密码不正确") && !victimHtml.includes("操作过于频繁"),
+    victimHtml.includes("操作过于频繁") ? "被其它 IP 的失败计数牵连" : ""
+  );
+
+  const registerIp = `smoke-reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const registerHeaders = { "x-forwarded-for": registerIp };
+  const registerPage = await fetchPage(`${BASE_URL}/register`, "");
+  const registerForm = extractForm(registerPage.html, "register-form");
+  check(
+    "注册页渲染出可回放的注册表单",
+    registerPage.status === 200 && Boolean(registerForm),
+    `http=${registerPage.status}`
+  );
+
+  let registerBlockedAt = 0;
+  for (let attempt = 1; attempt <= registerLimit + 1; attempt += 1) {
+    const response = await submitForm(
+      `${BASE_URL}/register`,
+      registerForm,
+      { name: "冒烟限流", email: TEST_EMAIL, password: "SmokeTest123" },
+      "",
+      registerHeaders
+    );
+    const html = await response.text();
+    if (html.includes("操作过于频繁")) {
+      registerBlockedAt = attempt;
+      break;
+    }
+  }
+  check(
+    `注册限流：同一 IP 第 ${registerLimit + 1} 次尝试被拒`,
+    registerBlockedAt === registerLimit + 1,
+    registerBlockedAt === 0 ? "始终未被限流" : `实际在第 ${registerBlockedAt} 次被拒`
+  );
+}
+
 async function main() {
   console.log(`冒烟目标：${BASE_URL}\n`);
   const userId = await seedTestUser();
@@ -599,6 +713,9 @@ async function main() {
 
   // 7b. 第 4 梯队：AI 拆分与限流
   await runAiChecks(jar);
+
+  // 7c. 认证限流（独立 IP 标记与邮箱，可重复运行）
+  await runAuthRateLimitChecks();
 
   // 8. 登出后会话失效
   const signOutCsrf = await fetch(`${BASE_URL}/api/auth/csrf`, {
