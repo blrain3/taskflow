@@ -22,8 +22,8 @@ export default async function IssuesPage({
   searchParams: Promise<{ view?: string }>;
 }) {
   const [{ workspace }, params] = await Promise.all([requireWorkspaceContext(), searchParams]);
-  const issues = await listIssues(workspace.id);
   const isBoard = params.view === "board";
+  const issues = await listIssues(workspace.id, isBoard ? "board" : "list");
 
   const pill = (active: boolean) =>
     `rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${

@@ -285,6 +285,30 @@ async function runIssueCrudChecks(primaryJar, primaryUserId) {
     `http=${boardPage.status} columns=${boardColumnsOk}`
   );
 
+  // 列表视图排序（P0-07）：按 createdAt 倒序，最新创建的在最前。
+  // 造第二张卡后比较两者在 HTML 中的位置，验证排序而不是只验证「渲染出来了」。
+  // 注意：标题不能互为子串（否则 indexOf 会命中错的位置），并留 50ms 让 createdAt 必然不同。
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const secondTitle = `排序对照任务-${Date.now()}`;
+  await submitForm(
+    issuesUrl,
+    extractForm((await fetchPage(issuesUrl, primaryJar.header())).html, "create-issue-form"),
+    { title: secondTitle, description: "" },
+    primaryJar.header()
+  );
+  const listPage = await fetchPage(issuesUrl, primaryJar.header());
+  const newerAt = listPage.html.indexOf(secondTitle);
+  const olderAt = listPage.html.indexOf(title);
+  check(
+    "列表视图按创建时间倒序（新卡在前）",
+    newerAt !== -1 && olderAt !== -1 && newerAt < olderAt,
+    newerAt === -1 || olderAt === -1 ? "卡片未渲染" : `newer=${newerAt} older=${olderAt}`
+  );
+  // 清理对照卡，让后续「任务数回到基线」的断言保持成立
+  await withPrisma((prisma) =>
+    prisma.issue.deleteMany({ where: { workspaceId, title: secondTitle } })
+  );
+
   // 空标题：应被 Zod 拦下，不产生记录
   const emptyForm = extractForm(
     (await fetchPage(issuesUrl, primaryJar.header())).html,

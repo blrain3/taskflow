@@ -46,11 +46,29 @@ export function toIssueItem(row: IssueRow): IssueItem {
   };
 }
 
-export async function listIssues(workspaceId: string): Promise<IssueItem[]> {
+export type IssueListMode = "list" | "board";
+
+/**
+ * 读取当前 Workspace 的任务。
+ *
+ * 两种视图的排序刻意不同，且都必须与数据库索引对齐（迁移见 prisma/migrations）：
+ * - board：`status → position → createdAt`。position 是列内序；加 status 让扁平数组
+ *   顺序确定（分组渲染不依赖它，但便于调试与分页）；position 相同的历史数据由 createdAt 兜底。
+ * - list：`createdAt → id`。**不能用 updatedAt**——看板拖拽会重写整列 position，
+ *   而 Prisma 的 @updatedAt 会因此刷新目标列所有卡片的 updatedAt，
+ *   结果是「拖一张卡，整个目标列跳到列表顶部」，updatedAt 也不再代表「内容被修改」。
+ *   列表排序走 createdAt 才能与 `@@index([workspaceId, createdAt])` 对应。
+ */
+export async function listIssues(
+  workspaceId: string,
+  mode: IssueListMode = "list"
+): Promise<IssueItem[]> {
   const rows = await getPrisma().issue.findMany({
     where: { workspaceId },
-    // position 是看板列内序（步长 100）；历史数据为 0，由 createdAt 兜底
-    orderBy: [{ position: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+    orderBy:
+      mode === "board"
+        ? [{ status: "asc" }, { position: "asc" }, { createdAt: "desc" }, { id: "desc" }]
+        : [{ createdAt: "desc" }, { id: "desc" }],
     select: ISSUE_SELECT,
   });
 
@@ -149,14 +167,18 @@ export async function moveIssueWithinWorkspace(params: MoveIssueParams): Promise
       throw new AppError("NOT_FOUND");
     }
 
-    // 2. 组出目标列的最终顺序：客户端清单在前，事务期间新出现的卡追加到列尾
+    // 2. 组出目标列的最终顺序：客户端清单在前，事务期间新出现的卡追加到列尾。
+    //    appended 的顺序必须显式指定——不写 orderBy 时 Postgres 返回顺序是任意的，
+    //    并发场景下会让列内顺序反复抖动。
     const columnRows = await tx.issue.findMany({
       where: { status: params.toStatus, workspaceId: params.workspaceId },
+      orderBy: [{ position: "asc" }, { createdAt: "desc" }, { id: "desc" }],
       select: { id: true },
     });
     const known = new Set(uniqueIds);
+    const targetColumnIds = new Set(columnRows.map((row) => row.id));
     const orderedInColumn = uniqueIds.filter(
-      (id) => id === params.issueId || columnRows.some((row) => row.id === id)
+      (id) => id === params.issueId || targetColumnIds.has(id)
     );
     const appended = columnRows.filter((row) => !known.has(row.id)).map((row) => row.id);
     const fullOrder = [...orderedInColumn, ...appended];

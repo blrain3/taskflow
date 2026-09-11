@@ -27,6 +27,29 @@ type PanelError = { message: string };
 type CreatedToast = { count: number; duplicate: boolean };
 
 const MIN_PROMPT_LENGTH = 10;
+const PROMPT_MAX_LENGTH = 4000;
+
+/**
+ * 生成批次标识。
+ *
+ * `crypto.randomUUID()` 只在**安全上下文**（HTTPS 或 localhost）存在；用
+ * `http://<公网 IP>:3000` 打开时它是 undefined，直接调用会让「确认创建」抛错。
+ * 因此这里退化为时间戳 + 随机串：requestId 只是幂等键（服务端要求 ≥8 位、
+ * 只含 [A-Za-z0-9_-]、不能有冒号），不需要密码学强度。
+ */
+export function createRequestId(): string {
+  const webCrypto = globalThis.crypto;
+  if (webCrypto && typeof webCrypto.randomUUID === "function") {
+    return webCrypto.randomUUID();
+  }
+
+  return [
+    "req",
+    Date.now().toString(36),
+    Math.random().toString(36).slice(2, 10),
+    Math.random().toString(36).slice(2, 10),
+  ].join("-");
+}
 
 export function AiBreakdownPanel() {
   const [prompt, setPrompt] = useState("");
@@ -47,7 +70,7 @@ export function AiBreakdownPanel() {
   const requestIdRef = useRef<string | null>(null);
   function currentRequestId(): string {
     if (requestIdRef.current === null) {
-      requestIdRef.current = crypto.randomUUID();
+      requestIdRef.current = createRequestId();
     }
     return requestIdRef.current;
   }
@@ -144,12 +167,14 @@ export function AiBreakdownPanel() {
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           rows={3}
-          maxLength={2000}
+          maxLength={PROMPT_MAX_LENGTH}
           disabled={phase === "loading" || creating}
           placeholder="例如：实现 OAuth2 登录，支持邮箱 + GitHub 两种方式"
           className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-zinc-100"
         />
-        <p className="mt-1 text-xs text-zinc-500">至少 10 个字符</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          至少 {MIN_PROMPT_LENGTH} 个字符，最多 {PROMPT_MAX_LENGTH} 个字符
+        </p>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

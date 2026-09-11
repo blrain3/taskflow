@@ -139,12 +139,25 @@ export const generatedSubtasksSchema = z
 /**
  * 批量创建入参（P0-11）。
  *
- * requestId 是幂等键：客户端每次「得到一批 AI 候选」时生成一个 UUID，
+ * requestId 是幂等键：客户端每次「得到一批 AI 候选」时生成一个随机标识，
  * 服务端据此生成确定性主键（`<requestId>:<index>`），重复提交同一批次不会产生重复任务。
  * 这就是 P0-11 验收 ④「重复点击确认不产生重复 Issue」的服务端那一半保证。
+ *
+ * 约束说明：
+ * - 限定字符集且**禁止冒号**——requestId 会被拼进主键并用冒号做分隔符，含冒号会让前缀解析歧义；
+ * - 不要求 UUID：`crypto.randomUUID()` 只在安全上下文可用（HTTP + 公网 IP 下为 undefined），
+ *   客户端有兜底生成，服务端只约束「像键一样安全」而不绑定具体形状；
+ * - 它不是安全令牌，可预测性不构成风险（跨 Workspace 的重放会在归属校验处被拒）。
  */
+export const requestIdSchema = z
+  .string()
+  .trim()
+  .min(8, { error: "批次标识过短" })
+  .max(64, { error: "批次标识过长" })
+  .regex(/^[A-Za-z0-9_-]+$/, { error: "批次标识只能包含字母、数字、连字符与下划线" });
+
 export const createIssuesFromSubtasksSchema = z.object({
-  requestId: z.uuid({ error: "缺少有效的批次标识" }),
+  requestId: requestIdSchema,
   subtasks: generatedSubtasksSchema,
 });
 
