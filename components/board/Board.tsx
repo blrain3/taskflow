@@ -63,6 +63,8 @@ export function Board({ issues: serverIssues }: { issues: IssueItem[] }) {
   }
 
   function handleDragStart(event: DragStartEvent) {
+    // 当前提交尚未完成时禁止第二笔拖拽，避免失败回滚覆盖另一笔乐观更新。
+    if (pendingIds.length > 0) return;
     dragStartRef.current = structuredClone(issues);
     setActiveId(String(event.active.id));
     setSyncPaused(true);
@@ -160,6 +162,7 @@ export function Board({ issues: serverIssues }: { issues: IssueItem[] }) {
       ) : null}
 
       <DndContext
+        id="taskflow-board"
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
@@ -167,15 +170,20 @@ export function Board({ issues: serverIssues }: { issues: IssueItem[] }) {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {ISSUE_STATUSES.map((status) => (
-            <BoardColumn
-              key={status}
-              status={status}
-              items={grouped[status]}
-              pendingIds={pendingIds}
-            />
-          ))}
+        <div className="@container">
+          {/* 列数由「容器宽度」而非视口决定：外层 page 在看板视图下放宽到 max-w-6xl，
+              但仍可能因小屏而不足 4 列。容器 ≥1120px 才展开 4 列，否则回落到
+              2 列 / 1 列，避免 4 列被压扁到 235px（规范要求列宽 296px）。 */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 @min-[1120px]:grid-cols-4">
+            {ISSUE_STATUSES.map((status) => (
+              <BoardColumn
+                key={status}
+                status={status}
+                items={grouped[status]}
+                pendingIds={pendingIds}
+              />
+            ))}
+          </div>
         </div>
 
         <DragOverlay>
