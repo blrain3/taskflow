@@ -151,14 +151,14 @@ export function AiBreakdownPanel() {
 
   return (
     <section
-      className="mt-6 rounded-lg border border-zinc-200 p-4"
+      className="mt-6 rounded-lg border border-line p-4"
       aria-labelledby="ai-breakdown-heading"
     >
       <header className="flex items-baseline justify-between">
-        <h2 className="text-sm font-medium text-zinc-800" id="ai-breakdown-heading">
+        <h2 className="text-sm font-medium text-fg" id="ai-breakdown-heading">
           AI 拆分任务
         </h2>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-fg-muted">
           描述一段工作，AI 拆出可执行子任务，确认后批量创建
         </span>
       </header>
@@ -217,7 +217,7 @@ export function AiBreakdownPanel() {
       {phase === "success" && subtasks.length > 0 ? (
         <ul className="mt-4 space-y-3" aria-label="AI 拆分候选子任务">
           {subtasks.map((item, index) => (
-            <li key={index} className="rounded-lg border border-zinc-200 bg-white p-3">
+            <li key={index} className="rounded-lg border border-line bg-raised p-3">
               <div className="flex items-start justify-between gap-2">
                 <Badge>#{index + 1}</Badge>
                 <Button

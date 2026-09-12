@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { loginWithCredentials, type AuthFormState } from "@/actions/auth";
 import { FieldError, FormError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/ui/submit-button";
 
 export function LoginForm() {
@@ -18,9 +19,9 @@ export function LoginForm() {
   return (
     <form id="login-form" action={formAction} className="space-y-4" noValidate>
       <div>
-        <label className="block text-sm font-medium text-zinc-800" htmlFor="email">
+        <Label className="block" htmlFor="email">
           邮箱
-        </label>
+        </Label>
         <Input
           id="email"
           name="email"
@@ -34,9 +35,9 @@ export function LoginForm() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-zinc-800" htmlFor="password">
+        <Label className="block" htmlFor="password">
           密码
-        </label>
+        </Label>
         <Input
           id="password"
           name="password"

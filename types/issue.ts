@@ -18,10 +18,10 @@ export const ISSUE_STATUS_LABELS: Record<IssueStatusValue, string> = {
 
 /** 徽标配色：中文股票约定下「已完成」用绿，进程类用蓝/琥珀 */
 export const ISSUE_STATUS_STYLES: Record<IssueStatusValue, string> = {
-  BACKLOG: "bg-zinc-100 text-zinc-700",
-  TODO: "bg-blue-50 text-blue-700",
-  IN_PROGRESS: "bg-amber-50 text-amber-700",
-  DONE: "bg-emerald-50 text-emerald-700",
+  BACKLOG: "bg-status-backlog-subtle text-status-backlog",
+  TODO: "bg-status-todo-subtle text-status-todo",
+  IN_PROGRESS: "bg-status-progress-subtle text-status-progress",
+  DONE: "bg-status-done-subtle text-status-done",
 };
 
 export type IssueItem = {

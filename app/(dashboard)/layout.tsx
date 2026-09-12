@@ -18,14 +18,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-3">
+      <header className="flex items-center justify-between border-b border-line px-6 py-3">
         <div className="flex items-baseline gap-3">
           <span className="text-sm font-semibold tracking-tight">TaskFlow</span>
-          <span className="text-sm text-zinc-500">{workspace.name}</span>
+          <span className="text-sm text-fg-muted">{workspace.name}</span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-600">{user.name ?? user.email}</span>
+          <span className="text-sm text-fg-muted">{user.name ?? user.email}</span>
           <form action={logout}>
             <SubmitButton variant="ghost" pendingText="登出中…">
               登出

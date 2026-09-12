@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { registerAccount, type AuthFormState } from "@/actions/auth";
 import { FieldError, FormError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/ui/submit-button";
 
 export function RegisterForm() {
@@ -17,17 +18,17 @@ export function RegisterForm() {
   return (
     <form id="register-form" action={formAction} className="space-y-4" noValidate>
       <div>
-        <label className="block text-sm font-medium text-zinc-800" htmlFor="name">
+        <Label className="block" htmlFor="name">
           昵称
-        </label>
+        </Label>
         <Input id="name" name="name" autoComplete="name" placeholder="怎么称呼你" required />
         <FieldError message={fields?.name} />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-zinc-800" htmlFor="email">
+        <Label className="block" htmlFor="email">
           邮箱
-        </label>
+        </Label>
         <Input
           id="email"
           name="email"
@@ -41,9 +42,9 @@ export function RegisterForm() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-zinc-800" htmlFor="password">
+        <Label className="block" htmlFor="password">
           密码
-        </label>
+        </Label>
         <Input
           id="password"
           name="password"
@@ -53,7 +54,7 @@ export function RegisterForm() {
           aria-describedby="password-hint"
           aria-invalid={fields?.password ? true : undefined}
         />
-        <p className="mt-1 text-xs text-zinc-500" id="password-hint">
+        <p className="mt-1 text-xs text-fg-muted" id="password-hint">
           至少 8 位，包含字母与数字
         </p>
         <FieldError message={fields?.password} />

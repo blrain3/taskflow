@@ -27,7 +27,7 @@ export default async function IssuesPage({
 
   const pill = (active: boolean) =>
     `rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-      active ? "bg-zinc-900 text-white" : "border border-zinc-300 text-zinc-700 hover:bg-zinc-100"
+      active ? "bg-brand text-fg-inverse" : "border border-line-strong text-fg-muted hover:bg-hover"
     }`;
 
   return (
@@ -38,7 +38,7 @@ export default async function IssuesPage({
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">任务</h1>
-          <p className="mt-1 text-sm text-zinc-600">当前工作区：{workspace.name}</p>
+          <p className="mt-1 text-sm text-fg-muted">当前工作区：{workspace.name}</p>
         </div>
 
         <nav aria-label="视图切换" className="flex gap-2">
@@ -52,10 +52,10 @@ export default async function IssuesPage({
       </header>
 
       <section
-        className="mt-6 rounded-lg border border-zinc-200 p-4"
+        className="mt-6 rounded-lg border border-line p-4"
         aria-labelledby="create-issue-heading"
       >
-        <h2 className="text-sm font-medium text-zinc-800" id="create-issue-heading">
+        <h2 className="text-sm font-medium text-fg" id="create-issue-heading">
           新建任务
         </h2>
         <div className="mt-3">

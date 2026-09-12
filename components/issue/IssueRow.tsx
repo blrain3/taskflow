@@ -15,7 +15,7 @@ import {
   type IssueItem,
 } from "@/types/issue";
 
-const summaryClassName = "cursor-pointer text-xs text-zinc-600 hover:text-zinc-900";
+const summaryClassName = "cursor-pointer text-xs text-fg-muted hover:text-fg";
 
 /**
  * 单个任务：展示 + 行内编辑 + 行内删除确认。
@@ -50,14 +50,14 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
         >
           {ISSUE_STATUS_LABELS[issue.status]}
         </span>
-        <span className="text-sm font-medium text-zinc-900">{issue.title}</span>
+        <span className="text-sm font-medium text-fg">{issue.title}</span>
       </div>
 
       {issue.description ? (
-        <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-600">{issue.description}</p>
+        <p className="mt-1 whitespace-pre-wrap text-sm text-fg-muted">{issue.description}</p>
       ) : null}
 
-      <p className="mt-1 text-xs text-zinc-400">创建于 {issue.createdAt.slice(0, 10)}</p>
+      <p className="mt-1 text-xs text-fg-subtle">创建于 {issue.createdAt.slice(0, 10)}</p>
 
       <div className="mt-2 flex flex-wrap items-start gap-4">
         <details>

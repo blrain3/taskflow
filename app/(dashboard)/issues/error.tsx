@@ -20,9 +20,9 @@ export default function IssuesError({
   }, [error]);
 
   return (
-    <div className="mx-auto max-w-3xl rounded-lg border border-red-200 bg-red-50 px-6 py-8 text-center">
-      <p className="text-sm font-medium text-red-800">任务列表加载失败</p>
-      <p className="mt-1 text-sm text-red-700">
+    <div className="mx-auto max-w-3xl rounded-lg border border-danger/30 bg-danger-subtle px-6 py-8 text-center">
+      <p className="text-sm font-medium text-danger">任务列表加载失败</p>
+      <p className="mt-1 text-sm text-danger">
         通常是数据库连接或权限校验出了问题，可以重试；持续失败请查看服务端日志。
       </p>
       <Button className="mt-4" onClick={reset}>
