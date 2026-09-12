@@ -4,7 +4,7 @@
  */
 export default function IssuesLoading() {
   return (
-    <div className="mx-auto max-w-3xl" aria-busy="true">
+    <div className="mx-auto max-w-5xl" aria-busy="true">
       <div className="h-6 w-20 animate-pulse rounded bg-zinc-200" />
       <div className="mt-2 h-5 w-56 animate-pulse rounded bg-zinc-100" />
 

@@ -1,26 +1,284 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   TaskFlow 设计令牌
+   规范：docs/05-design-assets/ui-design-system-v2.md §3
+   结构：Layer 1 原始值 → Layer 2 语义值 → Layer 3 组件值
+
+   铁律：业务代码只允许引用 Layer 2（--bg-* / --text-* / --border-* /
+   --brand-* / --status-* / --danger …），或在组件里用 @theme 映射出的工具类
+   （bg-canvas / text-fg-muted / border-line …）。
+   任何位置都不得直接引用 Layer 1（--ink-* / --paper-* / --violet-* …）——
+   换肤与调密度只改 Layer 2。
+
+   主题由 [data-theme] 属性驱动，不再使用 prefers-color-scheme：用户需要能在
+   设置页手动覆盖系统偏好。属性缺省时以 :root 的取值（深色）为准。
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Layer 1 · 原始令牌 ─────────────────────────────────────────────────────
+   只在本层出现十六进制值。只定义被 Layer 2 消费的值，不留死令牌。
+
+   中性色刻意分成 ink（深色端）与 paper（浅色端）两个家族，而不拉成一条统一的
+   50–950 色阶：两套主题对「主文字」的明度需求方向相反（深色下要接近纯白、浅色下
+   要接近纯黑），强行合成一条会得到感知不均匀的假色阶。
+
+   状态色与优先级色不做色阶。每个状态只有深/浅两个取值，为它们造 4–7 阶是没有
+   使用者的仪式，只增加维护面。
+   ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ink · 深色端中性色（浅 → 深） */
+  --ink-100: #f2f2f5;
+  --ink-400: #a0a0ac;
+  --ink-500: #6e6e7a;
+  --ink-800: #1d1d22;
+  --ink-850: #17171b;
+  --ink-900: #111114;
+  --ink-1000: #0b0b0d;
+
+  /* paper · 浅色端中性色（浅 → 深） */
+  --paper-0: #ffffff;
+  --paper-50: #fafafb;
+  --paper-400: #8a8a96;
+  --paper-500: #5c5c68;
+  --paper-600: #6b6b76;
+  --paper-950: #14141a;
+
+  /* violet · 品牌紫（浅 → 深） */
+  --violet-300: #a99bff;
+  --violet-400: #8b7cff;
+  --violet-500: #7f6eff;
+  --violet-600: #6e5bf6;
+  --violet-700: #5b48e0;
+  --violet-800: #4b39cc;
+  --violet-900: #4a3ab8;
+
+  /* 状态色：深色值 / 浅色值成对 */
+  --gray-500: #85858f; /* BACKLOG 深 */
+  --gray-600: #6b6b76; /* BACKLOG 浅 */
+  --blue-500: #5b8def; /* TODO 深 */
+  --blue-700: #2563eb; /* TODO 浅 */
+  --amber-500: #d9a03c; /* IN_PROGRESS 深 */
+  --amber-700: #b45309; /* IN_PROGRESS 浅 */
+  --green-500: #3fa65c; /* DONE 深 */
+  --green-700: #15803d; /* DONE 浅 */
+  --red-500: #e5484d; /* 危险 深 */
+  --red-700: #dc2626; /* 危险 浅 */
+  --orange-500: #e5863c; /* 优先级·高 深 */
+  --orange-700: #c2410c; /* 优先级·高 浅 */
 }
 
+/* ── 非主题令牌（与深浅无关，单处定义）───────────────────────────────────── */
+:root {
+  --dur-instant: 80ms;
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+}
+
+/* ── Layer 2 · 语义令牌 · 深色（默认，对应规范的「深色优先」）──────────────
+   同时匹配 :root 与 [data-theme="dark"]，后者让深色可以作为局部作用域使用
+   （例如浅色页面里嵌一块深色预览区）。
+   ─────────────────────────────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 表面 */
+  --bg-canvas: var(--ink-1000);
+  --bg-surface: var(--ink-900);
+  --bg-raised: var(--ink-850);
+  --bg-overlay: var(--ink-800);
+  --bg-hover: rgb(255 255 255 / 0.055);
+  --bg-active: rgb(255 255 255 / 0.09);
+
+  /* 描边 */
+  --border-subtle: rgb(255 255 255 / 0.07);
+  --border-default: rgb(255 255 255 / 0.12);
+  --border-strong: rgb(255 255 255 / 0.2);
+
+  /* 文字 */
+  --text-primary: var(--ink-100);
+  --text-secondary: var(--ink-400);
+  --text-tertiary: var(--ink-500);
+  --text-inverse: var(--ink-1000);
+
+  /* 品牌与焦点 */
+  --brand-500: var(--violet-600);
+  --brand-hover: var(--violet-500);
+  --brand-text: var(--violet-300);
+  --brand-subtle: rgb(110 91 246 / 0.16);
+  --focus-ring: var(--violet-400);
+
+  /* 状态（与数据库枚举 BACKLOG / TODO / IN_PROGRESS / DONE 一一对应） */
+  --status-backlog: var(--gray-500);
+  --status-todo: var(--blue-500);
+  --status-progress: var(--amber-500);
+  --status-done: var(--green-500);
+  --status-backlog-subtle: rgb(133 133 143 / 0.16);
+  --status-todo-subtle: rgb(91 141 239 / 0.16);
+  --status-progress-subtle: rgb(217 160 60 / 0.16);
+  --status-done-subtle: rgb(63 166 92 / 0.16);
+
+  /* 语义反馈 */
+  --danger: var(--red-500);
+  --danger-subtle: rgb(229 72 77 / 0.16);
+  --success: var(--status-done);
+  --warning: var(--status-progress);
+  --info: var(--status-todo);
+
+  /* 优先级（P1 功能，先定令牌后落实现） */
+  --priority-urgent: var(--red-500);
+  --priority-high: var(--orange-500);
+  --priority-medium: var(--text-secondary);
+  --priority-low: var(--text-tertiary);
+
+  /* 层级：深色下传统投影几乎不可见，靠「边框 + 微投影」双通道表达 */
+  --elev-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --elev-2: 0 8px 24px rgb(0 0 0 / 0.5);
+  --elev-3: 0 16px 48px rgb(0 0 0 / 0.6);
+}
+
+/* ── Layer 2 · 语义令牌 · 浅色 ─────────────────────────────────────────────
+   与深色块同一组变量名，仅取值不同（原则 P5「深浅同源」）。
+   源码顺序必须在深色块之后：两者特异性相同，靠顺序决定胜负。
+   ─────────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-canvas: var(--paper-0);
+  --bg-surface: var(--paper-50);
+  --bg-raised: var(--paper-0);
+  --bg-overlay: var(--paper-0);
+  --bg-hover: rgb(0 0 0 / 0.045);
+  --bg-active: rgb(0 0 0 / 0.07);
+
+  --border-subtle: rgb(0 0 0 / 0.08);
+  --border-default: rgb(0 0 0 / 0.14);
+  --border-strong: rgb(0 0 0 / 0.22);
+
+  --text-primary: var(--paper-950);
+  --text-secondary: var(--paper-500);
+  --text-tertiary: var(--paper-400);
+  --text-inverse: var(--paper-0);
+
+  --brand-500: var(--violet-700);
+  --brand-hover: var(--violet-800);
+  --brand-text: var(--violet-900);
+  --brand-subtle: rgb(91 72 224 / 0.1);
+  --focus-ring: var(--violet-700);
+
+  --status-backlog: var(--gray-600);
+  --status-todo: var(--blue-700);
+  --status-progress: var(--amber-700);
+  --status-done: var(--green-700);
+  --status-backlog-subtle: rgb(107 107 118 / 0.1);
+  --status-todo-subtle: rgb(37 99 235 / 0.1);
+  --status-progress-subtle: rgb(180 83 9 / 0.1);
+  --status-done-subtle: rgb(21 128 61 / 0.1);
+
+  --danger: var(--red-700);
+  --danger-subtle: rgb(220 38 38 / 0.1);
+  --success: var(--status-done);
+  --warning: var(--status-progress);
+  --info: var(--status-todo);
+
+  --priority-urgent: var(--red-700);
+  --priority-high: var(--orange-700);
+  --priority-medium: var(--text-secondary);
+  --priority-low: var(--text-tertiary);
+
+  --elev-1: 0 1px 2px rgb(0 0 0 / 0.06);
+  --elev-2: 0 4px 12px rgb(0 0 0 / 0.1);
+  --elev-3: 0 12px 32px rgb(0 0 0 / 0.14);
+}
+
+/* ── 缓动：与深浅无关，放在非 inline 的 @theme 里以生成 ease-* 工具类 ───────
+   刻意不覆盖 Tailwind 的 --ease-out / --ease-in-out：覆盖会让 ease-out 的含义
+   与官方文档不一致，读代码的人会误判。改用项目自有名字。
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* ── Layer 2 → Tailwind 工具类映射 ─────────────────────────────────────────
+   用 inline：让 --color-canvas 在编译期被替换成 var(--bg-canvas)，工具类因此能
+   在运行时跟随 [data-theme] 切换，而不是被固化成一个静态色值。
+   ─────────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* 表面 → bg-canvas / bg-surface / bg-raised / bg-overlay / bg-hover / bg-active */
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-raised: var(--bg-raised);
+  --color-overlay: var(--bg-overlay);
+  --color-hover: var(--bg-hover);
+  --color-active: var(--bg-active);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* 描边 → border-line / border-line-strong / border-line-heavy */
+  --color-line: var(--border-subtle);
+  --color-line-strong: var(--border-default);
+  --color-line-heavy: var(--border-strong);
+
+  /* 文字 → text-fg / text-fg-muted / text-fg-subtle / text-fg-inverse */
+  --color-fg: var(--text-primary);
+  --color-fg-muted: var(--text-secondary);
+  --color-fg-subtle: var(--text-tertiary);
+  --color-fg-inverse: var(--text-inverse);
+
+  /* 品牌 → bg-brand / text-brand / ring-focus 等 */
+  --color-brand: var(--brand-500);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-text: var(--brand-text);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-focus: var(--focus-ring);
+
+  /* 状态 → text-status-todo / bg-status-todo-subtle 等 */
+  --color-status-backlog: var(--status-backlog);
+  --color-status-todo: var(--status-todo);
+  --color-status-progress: var(--status-progress);
+  --color-status-done: var(--status-done);
+  --color-status-backlog-subtle: var(--status-backlog-subtle);
+  --color-status-todo-subtle: var(--status-todo-subtle);
+  --color-status-progress-subtle: var(--status-progress-subtle);
+  --color-status-done-subtle: var(--status-done-subtle);
+
+  /* 语义反馈 → text-danger / bg-danger-subtle 等 */
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  /* 优先级 */
+  --color-priority-urgent: var(--priority-urgent);
+  --color-priority-high: var(--priority-high);
+
+  /* 层级 → shadow-elev-1 / shadow-elev-2 / shadow-elev-3 */
+  --shadow-elev-1: var(--elev-1);
+  --shadow-elev-2: var(--elev-2);
+  --shadow-elev-3: var(--elev-3);
+
+  /* 字体：Geist 负责 Latin，中文走系统字体，避免为 CJK 引入体积巨大的 Web 字体 */
+  --font-sans:
+    var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* 圆角：只补 Tailwind 缺失的 10px 一档。
+     其余沿用默认——rounded-sm/md/lg = 4/6/8px，rounded-xl/2xl = 12/16px，
+     恰好覆盖规范里的 sm/md/lg 与 2xl/3xl。刻意不覆盖 --radius-xl/2xl：
+     那会把已有写法改义（Tailwind 的 xl 是 12px，规范的 xl 是 10px）。 */
+  --radius-card: 0.625rem;
+
+  /* 字号：只补 Tailwind 缺失的 13px 一档（规范里的 small）。
+     其余沿用默认——text-xs/sm/base/xl/2xl/3xl = 12/14/16/20/24/30px。
+     不另建一套 display/h1/h2 命名，否则会与 Tailwind 的字号体系并行成两套。 */
+  --text-small: 0.8125rem;
+  --text-small--line-height: 1.25rem;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
 }

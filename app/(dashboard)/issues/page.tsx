@@ -31,7 +31,10 @@ export default async function IssuesPage({
     }`;
 
   return (
-    <div className="mx-auto max-w-5xl">
+    // 列表与看板用不同容器宽度：列表 max-w-5xl（1024px）适合纵向阅读，
+    // 看板需要容纳 4×296px + 3×20px 间距 ≈ 1244px，故放宽到 max-w-6xl（1152px）。
+    // 列宽由 Board 内部按容器宽度决定，见 components/board/Board.tsx。
+    <div className={isBoard ? "mx-auto max-w-6xl" : "mx-auto max-w-5xl"}>
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">任务</h1>
