@@ -20,7 +20,7 @@ import { fieldErrorsOf, loginSchema, registerSchema } from "@/lib/validation";
 import type { ActionError, ActionResult } from "@/types/action";
 
 /**
- * 认证入口（docs/architecture.md §8.1 链路一）。
+ * 认证入口（docs/02-architecture/architecture.md §8.1 链路一）。
  *
  * 关于返回契约的例外：登录/注册成功后必须用服务端 redirect() 跳转——
  * 这样 Dashboard 才会带着新会话重新做 RSC 渲染。因此成功路径不返回 ActionResult，

@@ -1,5 +1,5 @@
 // TaskFlow 数据模型
-// 依据：docs/architecture.md §9、docs/adr-001-technical-decisions.md §5
+// 依据：docs/02-architecture/architecture.md §9、docs/02-architecture/adr-001-technical-decisions.md §5
 // 约束：Issue 必须外键绑定 Workspace；状态使用数据库枚举防止非法值入库。
 
 generator client {

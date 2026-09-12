@@ -1,6 +1,6 @@
 /**
  * Server Action / Route Handler 的统一返回契约。
- * 依据 docs/architecture.md §7.2：可序列化，禁止把原始异常抛给客户端。
+ * 依据 docs/02-architecture/architecture.md §7.2：可序列化，禁止把原始异常抛给客户端。
  */
 
 export type ErrorCode =

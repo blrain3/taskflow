@@ -10,7 +10,7 @@ import { getPrisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validation";
 
 /**
- * Auth.js 配置（docs/adr-001-technical-decisions.md §4）。
+ * Auth.js 配置（docs/02-architecture/adr-001-technical-decisions.md §4）。
  *
  * 两个刻意的取舍，都是为了让「构建」不依赖「运行时配置」：
  *

@@ -20,7 +20,7 @@ import type { ActionError, ActionResult } from "@/types/action";
 import type { IssueItem } from "@/types/issue";
 
 /**
- * Issue 变更入口（docs/architecture.md §7.2）。
+ * Issue 变更入口（docs/02-architecture/architecture.md §7.2）。
  *
  * 每个 Action 固定四步，缺一不可：
  *   1) Zod 校验入参
