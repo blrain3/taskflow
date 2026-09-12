@@ -22,7 +22,7 @@ export function RegisterForm() {
           昵称
         </Label>
         <Input id="name" name="name" autoComplete="name" placeholder="怎么称呼你" required />
-        <FieldError message={fields?.name} />
+        <FieldError id="register-name-error" message={fields?.name} />
       </div>
 
       <div>
@@ -37,8 +37,9 @@ export function RegisterForm() {
           placeholder="you@example.com"
           required
           aria-invalid={fields?.email ? true : undefined}
+          aria-describedby={fields?.email ? "register-email-error" : undefined}
         />
-        <FieldError message={fields?.email} />
+        <FieldError id="register-email-error" message={fields?.email} />
       </div>
 
       <div>
@@ -51,13 +52,13 @@ export function RegisterForm() {
           type="password"
           autoComplete="new-password"
           required
-          aria-describedby="password-hint"
+          aria-describedby={fields?.password ? "register-password-error" : "password-hint"}
           aria-invalid={fields?.password ? true : undefined}
         />
         <p className="mt-1 text-xs text-fg-muted" id="password-hint">
           至少 8 位，包含字母与数字
         </p>
-        <FieldError message={fields?.password} />
+        <FieldError id="register-password-error" message={fields?.password} />
       </div>
 
       <FormError message={formMessage} />

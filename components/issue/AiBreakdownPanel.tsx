@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { createIssuesFromSubtasksAction } from "@/actions/issue";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ISSUE_DESCRIPTION_MAX_LENGTH,
+  ISSUE_TITLE_MAX_LENGTH,
+  PROMPT_MAX_LENGTH,
+  PROMPT_MIN_LENGTH,
+} from "@/lib/validation";
 import type { ActionResult } from "@/types/action";
 import type { GeneratedSubtask } from "@/types/issue";
 
@@ -22,17 +28,19 @@ import type { GeneratedSubtask } from "@/types/issue";
  *
  * 设计决策：
  * - AI 调用走 Route Handler（fetch），批量创建走 Server Action（直调）；
+ * - 拆分请求可取消（AbortController）：组件卸载或用户点击取消时中断，
+ *   不再占用限流额度与上游配额（对应设计规范流程 E）；
  * - creating 期间两个按钮都禁用，避免重复提交；
  * - 错误条只展示 ErrorCode 对应的安全文案，不透出堆栈或 prompt 内容。
  */
 type Phase = "idle" | "loading" | "success";
 
+/** 候选项在服务端契约之上附带一个客户端稳定 id：删除中间项时 React 不会复用错位节点 */
+type Candidate = GeneratedSubtask & { clientId: string };
+
 type PanelError = { message: string };
 
 type CreatedToast = { count: number; duplicate: boolean };
-
-const MIN_PROMPT_LENGTH = 10;
-const PROMPT_MAX_LENGTH = 4000;
 
 /**
  * 生成批次标识。
@@ -60,12 +68,18 @@ export function AiBreakdownPanel() {
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [creating, setCreating] = useState(false);
-  const [subtasks, setSubtasks] = useState<GeneratedSubtask[]>([]);
+  const [subtasks, setSubtasks] = useState<Candidate[]>([]);
   const [error, setError] = useState<PanelError | null>(null);
   const [created, setCreated] = useState<CreatedToast | null>(null);
 
   const trimmed = prompt.trim();
-  const canBreakdown = trimmed.length >= MIN_PROMPT_LENGTH && phase !== "loading" && !creating;
+  const canBreakdown = trimmed.length >= PROMPT_MIN_LENGTH && phase !== "loading" && !creating;
+
+  const nextClientIdRef = useRef(0);
+  function makeClientId(): string {
+    nextClientIdRef.current += 1;
+    return `candidate-${nextClientIdRef.current}`;
+  }
 
   /**
    * 幂等键：一批候选用一个 requestId，服务端据此生成确定性主键。
@@ -84,15 +98,26 @@ export function AiBreakdownPanel() {
     requestIdRef.current = null;
   }
 
+  // 拆分请求的可取消句柄；组件卸载时中断在途请求，避免浪费限流额度
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
   async function handleBreakdown() {
     setError(null);
     setCreated(null);
     setPhase("loading");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const response = await fetch("/api/ai/breakdown", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ prompt: trimmed }),
+        signal: controller.signal,
       });
       const payload = (await response.json()) as ActionResult<{ subtasks: GeneratedSubtask[] }>;
       if (!payload.ok) {
@@ -102,14 +127,25 @@ export function AiBreakdownPanel() {
       }
       // 新一批候选 = 新一个批次标识，避免与上一批的幂等键混用
       startNewBatch();
-      setSubtasks(payload.data.subtasks);
+      setSubtasks(payload.data.subtasks.map((item) => ({ ...item, clientId: makeClientId() })));
       setPhase("success");
     } catch (caught) {
+      // 用户主动取消：回到初始态即可，不当作错误打扰
+      if (caught instanceof DOMException && caught.name === "AbortError") {
+        setPhase("idle");
+        return;
+      }
       setError({
         message: caught instanceof Error ? `网络异常：${caught.message}` : "网络异常，请稍后重试",
       });
       setPhase("idle");
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
     }
+  }
+
+  function handleCancelBreakdown() {
+    abortRef.current?.abort();
   }
 
   async function handleCreate() {
@@ -120,7 +156,8 @@ export function AiBreakdownPanel() {
       // 沿用同一 requestId：网络抖动后的重试会命中服务端幂等，不会创建两份
       const result = await createIssuesFromSubtasksAction({
         requestId: currentRequestId(),
-        subtasks,
+        // clientId 是纯客户端概念，不进入服务端契约
+        subtasks: subtasks.map(({ title, description }) => ({ title, description })),
       });
       if (!result.ok) {
         // 失败保留候选项与用户编辑，方便直接重试
@@ -141,12 +178,14 @@ export function AiBreakdownPanel() {
     }
   }
 
-  function updateSubtask(index: number, patch: Partial<GeneratedSubtask>) {
-    setSubtasks((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  function updateSubtask(clientId: string, patch: Partial<GeneratedSubtask>) {
+    setSubtasks((prev) =>
+      prev.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item))
+    );
   }
 
-  function removeSubtask(index: number) {
-    setSubtasks((prev) => prev.filter((_, i) => i !== index));
+  function removeSubtask(clientId: string) {
+    setSubtasks((prev) => prev.filter((item) => item.clientId !== clientId));
   }
 
   return (
@@ -178,7 +217,7 @@ export function AiBreakdownPanel() {
           className="mt-1"
         />
         <p className="mt-1 text-xs text-fg-muted">
-          至少 {MIN_PROMPT_LENGTH} 个字符，最多 {PROMPT_MAX_LENGTH} 个字符
+          至少 {PROMPT_MIN_LENGTH} 个字符，最多 {PROMPT_MAX_LENGTH} 个字符
         </p>
       </div>
 
@@ -186,6 +225,12 @@ export function AiBreakdownPanel() {
         <Button type="button" onClick={handleBreakdown} disabled={!canBreakdown}>
           {phase === "loading" ? "AI 拆分中…" : "AI 拆分"}
         </Button>
+
+        {phase === "loading" ? (
+          <Button type="button" variant="ghost" onClick={handleCancelBreakdown}>
+            取消
+          </Button>
+        ) : null}
 
         {phase === "success" && subtasks.length > 0 ? (
           <Button type="button" onClick={handleCreate} disabled={creating} variant="secondary">
@@ -217,14 +262,14 @@ export function AiBreakdownPanel() {
       {phase === "success" && subtasks.length > 0 ? (
         <ul className="mt-4 space-y-3" aria-label="AI 拆分候选子任务">
           {subtasks.map((item, index) => (
-            <li key={index} className="rounded-lg border border-line bg-raised p-3">
+            <li key={item.clientId} className="rounded-lg border border-line bg-raised p-3">
               <div className="flex items-start justify-between gap-2">
                 <Badge>#{index + 1}</Badge>
                 <Button
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={() => removeSubtask(index)}
+                  onClick={() => removeSubtask(item.clientId)}
                   disabled={creating}
                 >
                   删除
@@ -233,8 +278,8 @@ export function AiBreakdownPanel() {
               <Input
                 type="text"
                 value={item.title}
-                onChange={(event) => updateSubtask(index, { title: event.target.value })}
-                maxLength={200}
+                onChange={(event) => updateSubtask(item.clientId, { title: event.target.value })}
+                maxLength={ISSUE_TITLE_MAX_LENGTH}
                 disabled={creating}
                 className="mt-1 font-medium"
                 aria-label={`子任务 ${index + 1} 标题`}
@@ -242,12 +287,12 @@ export function AiBreakdownPanel() {
               <Textarea
                 value={item.description ?? ""}
                 onChange={(event) =>
-                  updateSubtask(index, {
+                  updateSubtask(item.clientId, {
                     description: event.target.value.length === 0 ? null : event.target.value,
                   })
                 }
                 rows={2}
-                maxLength={2000}
+                maxLength={ISSUE_DESCRIPTION_MAX_LENGTH}
                 disabled={creating}
                 className="mt-2 min-h-0 text-xs"
                 aria-label={`子任务 ${index + 1} 描述`}

@@ -30,8 +30,9 @@ export function LoginForm() {
           placeholder="you@example.com"
           required
           aria-invalid={fields?.email ? true : undefined}
+          aria-describedby={fields?.email ? "login-email-error" : undefined}
         />
-        <FieldError message={fields?.email} />
+        <FieldError id="login-email-error" message={fields?.email} />
       </div>
 
       <div>
@@ -45,8 +46,9 @@ export function LoginForm() {
           autoComplete="current-password"
           required
           aria-invalid={fields?.password ? true : undefined}
+          aria-describedby={fields?.password ? "login-password-error" : undefined}
         />
-        <FieldError message={fields?.password} />
+        <FieldError id="login-password-error" message={fields?.password} />
       </div>
 
       <FormError message={formMessage} />

@@ -16,7 +16,7 @@ export const ISSUE_STATUS_LABELS: Record<IssueStatusValue, string> = {
   DONE: "已完成",
 };
 
-/** 徽标配色：中文股票约定下「已完成」用绿，进程类用蓝/琥珀 */
+/** 徽标配色：用色彩惯例降低扫读成本（绿 = 已完成是任务工具的通用约定），颜色不单独承载语义，必须与状态文字并列出现 */
 export const ISSUE_STATUS_STYLES: Record<IssueStatusValue, string> = {
   BACKLOG: "bg-status-backlog-subtle text-status-backlog",
   TODO: "bg-status-todo-subtle text-status-todo",

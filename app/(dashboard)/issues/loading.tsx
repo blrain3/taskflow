@@ -1,10 +1,12 @@
 /**
  * 加载态（US-005：加载时不得引起布局跳动）。
- * 骨架的尺寸与真实页面一致，避免数据到达后整页位移。
+ * 页面容器对列表与看板统一使用 max-w-6xl（见 issues/page.tsx），骨架因此与两种视图都
+ * 保持同宽，数据到达后不会发生整页位移；loading.tsx 拿不到 searchParams，统一宽度
+ * 是让骨架与真实页面必然对齐的唯一途径。
  */
 export default function IssuesLoading() {
   return (
-    <div className="mx-auto max-w-5xl" aria-busy="true">
+    <div className="mx-auto max-w-6xl" aria-busy="true">
       <div className="h-6 w-20 animate-pulse rounded bg-hover" />
       <div className="mt-2 h-5 w-56 animate-pulse rounded bg-hover" />
 

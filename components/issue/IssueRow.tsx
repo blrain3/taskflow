@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import { deleteIssueAction, updateIssueAction, type IssueFormState } from "@/actions/issue";
 import { FieldError, FormError } from "@/components/ui/field-error";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Textarea } from "@/components/ui/textarea";
+import { ISSUE_DESCRIPTION_MAX_LENGTH, ISSUE_TITLE_MAX_LENGTH } from "@/lib/validation";
 import {
   ISSUE_STATUSES,
   ISSUE_STATUS_LABELS,
@@ -42,6 +43,15 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
   const deleteError = deleteState && !deleteState.ok ? deleteState.error : null;
   const updateSucceeded = updateState?.ok === true;
 
+  // 「已保存」只在保存成功后展示一次，重新展开编辑时清除，避免滞留成误导。
+  // 用渲染期对齐（React 认可的 state 调整模式）记录「尚未被读过」的那次成功，
+  // 不放进 effect——setState 在 effect 里同步调用会触发连锁渲染。
+  const [unreadSaved, setUnreadSaved] = useState<IssueFormState>(null);
+  if (updateState?.ok === true && unreadSaved !== updateState) {
+    setUnreadSaved(updateState);
+  }
+  const savedVisible = updateState?.ok === true && unreadSaved === updateState;
+
   return (
     <div className="px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -60,7 +70,11 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
       <p className="mt-1 text-xs text-fg-subtle">创建于 {issue.createdAt.slice(0, 10)}</p>
 
       <div className="mt-2 flex flex-wrap items-start gap-4">
-        <details>
+        <details
+          onToggle={(event) => {
+            if ((event.target as HTMLDetailsElement).open) setUnreadSaved(null);
+          }}
+        >
           <summary className={summaryClassName} aria-label={`编辑「${issue.title}」`}>
             编辑
           </summary>
@@ -82,11 +96,12 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
                 name="title"
                 defaultValue={issue.title}
                 required
-                maxLength={200}
+                maxLength={ISSUE_TITLE_MAX_LENGTH}
                 className="mt-1"
                 aria-invalid={updateFields?.title ? true : undefined}
+                aria-describedby={updateFields?.title ? `title-${issue.id}-error` : undefined}
               />
-              <FieldError message={updateFields?.title} />
+              <FieldError id={`title-${issue.id}-error`} message={updateFields?.title} />
             </div>
 
             <div>
@@ -97,12 +112,18 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
                 id={`description-${issue.id}`}
                 name="description"
                 rows={3}
-                maxLength={2000}
+                maxLength={ISSUE_DESCRIPTION_MAX_LENGTH}
                 defaultValue={issue.description ?? ""}
                 className="mt-1"
                 aria-invalid={updateFields?.description ? true : undefined}
+                aria-describedby={
+                  updateFields?.description ? `description-${issue.id}-error` : undefined
+                }
               />
-              <FieldError message={updateFields?.description} />
+              <FieldError
+                id={`description-${issue.id}-error`}
+                message={updateFields?.description}
+              />
             </div>
 
             <div>
@@ -115,6 +136,7 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
                 defaultValue={issue.status}
                 className="mt-1 block h-9 w-full rounded-md border border-line-strong bg-raised px-3 py-2 text-sm text-fg"
                 aria-invalid={updateFields?.status ? true : undefined}
+                aria-describedby={updateFields?.status ? `status-${issue.id}-error` : undefined}
               >
                 {ISSUE_STATUSES.map((status) => (
                   <option key={status} value={status}>
@@ -122,12 +144,12 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
                   </option>
                 ))}
               </select>
-              <FieldError message={updateFields?.status} />
+              <FieldError id={`status-${issue.id}-error`} message={updateFields?.status} />
             </div>
 
             <FormError message={updateError && !updateFields ? updateError.message : undefined} />
 
-            {updateSucceeded ? (
+            {updateSucceeded && savedVisible ? (
               <p className="text-sm text-success" role="status">
                 已保存
               </p>

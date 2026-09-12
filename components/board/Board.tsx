@@ -163,6 +163,12 @@ export function Board({ issues: serverIssues }: { issues: IssueItem[] }) {
             忽略
           </Button>
         </div>
+      ) : pendingIds.length > 0 ? (
+        // 请求在途期间全局暂停拖拽（避免两笔乐观更新互相覆盖回滚快照），
+        // 必须给用户可见的原因，否则「拖不动」看起来像坏了
+        <p role="status" className="mb-3 text-xs text-fg-muted">
+          正在同步任务状态，稍候可继续拖拽…
+        </p>
       ) : null}
 
       <DndContext

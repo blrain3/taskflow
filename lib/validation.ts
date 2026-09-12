@@ -56,6 +56,9 @@ export const workspaceNameSchema = z
 
 export const ISSUE_TITLE_MAX_LENGTH = 200;
 export const ISSUE_DESCRIPTION_MAX_LENGTH = 2000;
+/** AI 拆分输入的长度契约（与 aiBreakdownRequestSchema 保持同一真源） */
+export const PROMPT_MIN_LENGTH = 10;
+export const PROMPT_MAX_LENGTH = 4000;
 
 /** 状态枚举取自 types/issue.ts 的单一真源，避免两处定义漂移 */
 export const issueStatusSchema = z.enum(ISSUE_STATUSES, { error: "任务状态不合法" });
@@ -167,8 +170,8 @@ export const aiBreakdownRequestSchema = z.object({
   prompt: z
     .string()
     .trim()
-    .min(10, { error: "请输入至少 10 个字符的描述" })
-    .max(4000, { error: "描述不能超过 4000 个字符" }),
+    .min(PROMPT_MIN_LENGTH, { error: "请输入至少 10 个字符的描述" })
+    .max(PROMPT_MAX_LENGTH, { error: "描述不能超过 4000 个字符" }),
 });
 
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;

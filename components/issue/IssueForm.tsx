@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldError, FormError } from "@/components/ui/field-error";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { ISSUE_DESCRIPTION_MAX_LENGTH, ISSUE_TITLE_MAX_LENGTH } from "@/lib/validation";
 
 /** 创建任务表单（US-003）。成功后清空输入，失败时保留用户已填内容。 */
 export function IssueForm() {
@@ -33,11 +34,12 @@ export function IssueForm() {
           id="issue-title"
           name="title"
           required
-          maxLength={200}
+          maxLength={ISSUE_TITLE_MAX_LENGTH}
           placeholder="要做什么？"
           aria-invalid={fields?.title ? true : undefined}
+          aria-describedby={fields?.title ? "issue-title-error" : undefined}
         />
-        <FieldError message={fields?.title} />
+        <FieldError id="issue-title-error" message={fields?.title} />
       </div>
 
       <div>
@@ -48,12 +50,13 @@ export function IssueForm() {
           id="issue-description"
           name="description"
           rows={3}
-          maxLength={2000}
+          maxLength={ISSUE_DESCRIPTION_MAX_LENGTH}
           placeholder="补充背景、验收条件等"
           className="mt-1"
           aria-invalid={fields?.description ? true : undefined}
+          aria-describedby={fields?.description ? "issue-description-error" : undefined}
         />
-        <FieldError message={fields?.description} />
+        <FieldError id="issue-description-error" message={fields?.description} />
       </div>
 
       <FormError message={error && !fields ? error.message : undefined} />
