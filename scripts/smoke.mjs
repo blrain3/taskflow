@@ -216,8 +216,8 @@ async function fetchPage(url, cookieHeader) {
   return { status: response.status, html: await response.text() };
 }
 
-/** 走一遍 CSRF + 凭据登录，返回是否拿到会话 Cookie */
-async function signInWith(jar, email, password) {
+/** 走一遍 CSRF + 凭据登录，返回是否拿到会话 Cookie；headers 供限流用例标记来源 IP */
+async function signInWith(jar, email, password, extraHeaders = {}) {
   const csrfResponse = await fetch(`${BASE_URL}/api/auth/csrf`);
   jar.absorb(csrfResponse);
   const { csrfToken } = await csrfResponse.json();
@@ -227,6 +227,7 @@ async function signInWith(jar, email, password) {
     headers: {
       "content-type": "application/x-www-form-urlencoded",
       cookie: jar.header(),
+      ...extraHeaders,
     },
     body: new URLSearchParams({
       csrfToken,
@@ -549,9 +550,16 @@ async function runAiChecks(primaryJar) {
  * 注意：本地无反向代理，x-forwarded-for 会原样透传，所以这里可以自己指定；
  * 生产必须由 Nginx 覆写该头，否则按 IP 的限流可被伪造（详见 lib/client-ip.ts）。
  */
-async function runAuthRateLimitChecks() {
+async function runAuthRateLimitChecks(prodLikeTarget) {
   const loginLimit = Number(loadEnvValue("AUTH_LOGIN_RATE_LIMIT_PER_MINUTE", "10"));
   const registerLimit = Number(loadEnvValue("AUTH_REGISTER_RATE_LIMIT_PER_MINUTE", "5"));
+  // 生产模式且未信任代理时，服务端会跳过按 IP 的限流（lib/client-ip.ts：不可信维度
+  // 不能退化成全局桶）。此时依赖 XFF 头的用例改为跳过，而不是误报失败。
+  // 若目标生产环境已设置 TRUST_PROXY=true，可用 SMOKE_EXPECT_IP_RATE_LIMIT=true 强制开启。
+  const expectIpDimension =
+    process.env.SMOKE_EXPECT_IP_RATE_LIMIT === "true"
+      ? true
+      : !prodLikeTarget || loadEnvValue("TRUST_PROXY", "false") === "true";
 
   const loginIp = `smoke-ip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const loginHeaders = { "x-forwarded-for": loginIp };
@@ -602,51 +610,89 @@ async function runAuthRateLimitChecks() {
     otherHtml.includes("操作过于频繁") ? "被同 IP 桶误伤" : ""
   );
 
-  // 同一邮箱、换 IP：证明攻击者打满自己那份额度后，无法把真实用户锁在门外
-  const victimIp = `smoke-ip-victim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const victimResponse = await submitForm(
-    `${BASE_URL}/login`,
-    loginForm,
-    { email, password: "WrongPassword123" },
-    "",
-    { "x-forwarded-for": victimIp }
-  );
-  const victimHtml = await victimResponse.text();
-  check(
-    "登录限流：同一邮箱换 IP 不受影响（无法被锁号）",
-    victimHtml.includes("邮箱或密码不正确") && !victimHtml.includes("操作过于频繁"),
-    victimHtml.includes("操作过于频繁") ? "被其它 IP 的失败计数牵连" : ""
-  );
-
-  const registerIp = `smoke-reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const registerHeaders = { "x-forwarded-for": registerIp };
-  const registerPage = await fetchPage(`${BASE_URL}/register`, "");
-  const registerForm = extractForm(registerPage.html, "register-form");
-  check(
-    "注册页渲染出可回放的注册表单",
-    registerPage.status === 200 && Boolean(registerForm),
-    `http=${registerPage.status}`
-  );
-
-  let registerBlockedAt = 0;
-  for (let attempt = 1; attempt <= registerLimit + 1; attempt += 1) {
-    const response = await submitForm(
-      `${BASE_URL}/register`,
-      registerForm,
-      { name: "冒烟限流", email: TEST_EMAIL, password: "SmokeTest123" },
+  // 同一邮箱、换 IP：证明攻击者打满自己那份额度后，无法把真实用户锁在门外。
+  // 仅当目标环境按 IP 分桶时才有意义（见函数头的 expectIpDimension 说明）。
+  if (expectIpDimension) {
+    const victimIp = `smoke-ip-victim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const victimResponse = await submitForm(
+      `${BASE_URL}/login`,
+      loginForm,
+      { email, password: "WrongPassword123" },
       "",
-      registerHeaders
+      { "x-forwarded-for": victimIp }
     );
-    const html = await response.text();
-    if (html.includes("操作过于频繁")) {
-      registerBlockedAt = attempt;
-      break;
-    }
+    const victimHtml = await victimResponse.text();
+    check(
+      "登录限流：同一邮箱换 IP 不受影响（无法被锁号）",
+      victimHtml.includes("邮箱或密码不正确") && !victimHtml.includes("操作过于频繁"),
+      victimHtml.includes("操作过于频繁") ? "被其它 IP 的失败计数牵连" : ""
+    );
+  } else {
+    check(
+      "登录限流：同一邮箱换 IP 不受影响（无法被锁号）",
+      true,
+      "跳过：目标为生产模式且未信任代理，IP 维度不参与限流"
+    );
   }
+
+  if (expectIpDimension) {
+    const registerIp = `smoke-reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const registerHeaders = { "x-forwarded-for": registerIp };
+    const registerPage = await fetchPage(`${BASE_URL}/register`, "");
+    const registerForm = extractForm(registerPage.html, "register-form");
+    check(
+      "注册页渲染出可回放的注册表单",
+      registerPage.status === 200 && Boolean(registerForm),
+      `http=${registerPage.status}`
+    );
+
+    let registerBlockedAt = 0;
+    for (let attempt = 1; attempt <= registerLimit + 1; attempt += 1) {
+      const response = await submitForm(
+        `${BASE_URL}/register`,
+        registerForm,
+        { name: "冒烟限流", email: TEST_EMAIL, password: "SmokeTest123" },
+        "",
+        registerHeaders
+      );
+      const html = await response.text();
+      if (html.includes("操作过于频繁")) {
+        registerBlockedAt = attempt;
+        break;
+      }
+    }
+    check(
+      `注册限流：同一 IP 第 ${registerLimit + 1} 次尝试被拒`,
+      registerBlockedAt === registerLimit + 1,
+      registerBlockedAt === 0 ? "始终未被限流" : `实际在第 ${registerBlockedAt} 次被拒`
+    );
+  } else {
+    check(
+      `注册限流：同一 IP 第 ${registerLimit + 1} 次尝试被拒`,
+      true,
+      "跳过：目标为生产模式且未信任代理，IP 维度不参与限流"
+    );
+  }
+
+  // REST 凭据回调与登录表单走同一层限流：先用错误密码打满邮箱失败桶，
+  // 再用正确密码直接打 REST 端点——若仍能拿到会话，说明限流被绕开（P0 漏洞回归断言）。
+  const restIp = `smoke-rest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const restHeaders = expectIpDimension ? { "x-forwarded-for": restIp } : {};
+  for (let attempt = 0; attempt < loginLimit; attempt += 1) {
+    await submitForm(
+      `${BASE_URL}/login`,
+      loginForm,
+      { email: TEST_EMAIL, password: "WrongPassword123" },
+      "",
+      restHeaders
+    );
+  }
+  const restJar = new CookieJar();
+  await signInWith(restJar, TEST_EMAIL, TEST_PASSWORD, restHeaders);
   check(
-    `注册限流：同一 IP 第 ${registerLimit + 1} 次尝试被拒`,
-    registerBlockedAt === registerLimit + 1,
-    registerBlockedAt === 0 ? "始终未被限流" : `实际在第 ${registerBlockedAt} 次被拒`
+    "登录限流：REST 凭据回调无法绕开邮箱失败计数",
+    !restJar.has("session-token"),
+    restJar.has("session-token") ? "REST 端点用正确密码仍登录成功，限流被绕开" : ""
   );
 }
 
@@ -663,6 +709,9 @@ async function main() {
     health.status === 200 && healthBody.status === "ok",
     `http=${health.status} database=${healthBody.database} missingEnv=${JSON.stringify(healthBody.missingEnv)}`
   );
+  // 生产环境的健康检查刻意只返回 {status}；据此判定目标是否为生产模式，
+  // 供认证限流用例决定 IP 维度是否参与（见 runAuthRateLimitChecks）。
+  const prodLikeTarget = healthBody.database === undefined;
 
   // 2. 未登录访问受保护路由
   const guarded = await fetch(`${BASE_URL}/issues`, { redirect: "manual" });
@@ -748,7 +797,7 @@ async function main() {
   await runAiChecks(jar);
 
   // 7c. 认证限流（独立 IP 标记与邮箱，可重复运行）
-  await runAuthRateLimitChecks();
+  await runAuthRateLimitChecks(prodLikeTarget);
 
   // 8. 登出后会话失效
   const signOutCsrf = await fetch(`${BASE_URL}/api/auth/csrf`, {

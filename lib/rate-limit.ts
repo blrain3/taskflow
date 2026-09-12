@@ -96,6 +96,12 @@ export function checkRateLimit({ key, limit, windowMs, label }: RateLimitOptions
   });
 }
 
+/** 只检查、不抛错：超限返回 true。供无法用异常表达语义的调用方使用（如 authorize 静默拒绝） */
+export function isRateLimited(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  return recentHits(key, now, windowMs).length >= limit;
+}
+
 /** 只计数：不检查是否超限（由下一次 check 负责拦截） */
 export function recordRateLimitHit(key: string, windowMs: number): void {
   const now = Date.now();

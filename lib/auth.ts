@@ -4,6 +4,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { redirect } from "next/navigation";
 
+import { clearLoginFailures, consumeLoginAttempt, recordLoginFailure } from "@/lib/auth-rate-limit";
 import { AppError } from "@/lib/errors";
 import { verifyPassword } from "@/lib/password";
 import { getPrisma } from "@/lib/prisma";
@@ -22,6 +23,10 @@ import { loginSchema } from "@/lib/validation";
  *    Account / Session 表保留在 Schema 中，待接入 OAuth 时再启用适配器。
  *
  * 同理，这里不显式传 `secret`：Auth.js 会自行读取 AUTH_SECRET，缺失时抛出 MissingSecret。
+ *
+ * 登录限流的计数必须在 authorize() 里做（lib/auth-rate-limit.ts）：凭据回调
+ * /api/auth/callback/credentials 是一条绕开登录表单 Server Action 的公开入口，
+ * 只在 Action 里限流等于给暴力破解留了一条不限速的路。
  */
 
 export type AuthedUser = {
@@ -29,6 +34,13 @@ export type AuthedUser = {
   email: string | null;
   name: string | null;
 };
+
+/**
+ * 计时均衡用的固定 bcrypt 哈希（明文不是任何真实密码）。
+ * 用户不存在时也对它跑一次 compare，让「邮箱不存在」与「密码错误」耗时一致，
+ * 否则响应时间差可以枚举注册邮箱，与统一模糊文案的安全目标矛盾。
+ */
+const TIMING_EQUALIZER_HASH = "$2b$10$YuPPQRo.S3uuF4Nm7MAD5O0WR10VfeVRqp.wwOfcH/Y16/PT17MQe";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -42,20 +54,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(rawCredentials) {
         const parsed = loginSchema.safeParse(rawCredentials);
-        if (!parsed.success) return null;
+        const email = parsed.success ? parsed.data.email : null;
 
-        const { email, password } = parsed.data;
-        const user = await getPrisma().user.findUnique({
-          where: { email },
-          select: { id: true, email: true, name: true, passwordHash: true },
-        });
+        // 真正的限流计数（IP 桶 + 邮箱失败桶）。表单 Action 只做只读前置检查，
+        // 这里是唯一计数点，使表单与 REST 凭据回调两条路径受同一层保护。
+        const gate = await consumeLoginAttempt(email);
 
-        // 用户不存在与密码错误返回同样的结果，避免账号枚举
-        if (!user) return null;
+        const { email: verifiedEmail, password } = parsed.success
+          ? parsed.data
+          : { email: null, password: undefined };
 
-        const passwordMatches = await verifyPassword(password, user.passwordHash);
-        if (!passwordMatches) return null;
+        // 邮箱不存在与密码错误走同一耗时路径、返回同样结果，避免账号枚举
+        const user =
+          verifiedEmail === null
+            ? null
+            : await getPrisma().user.findUnique({
+                where: { email: verifiedEmail },
+                select: { id: true, email: true, name: true, passwordHash: true },
+              });
 
+        const passwordMatches = await verifyPassword(
+          password ?? "",
+          user?.passwordHash ?? TIMING_EQUALIZER_HASH
+        );
+        if (!user || !passwordMatches) {
+          recordLoginFailure(gate);
+          return null;
+        }
+
+        clearLoginFailures(gate);
         return { id: user.id, email: user.email, name: user.name };
       },
     }),
