@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
 
@@ -13,7 +13,7 @@ import { auth } from "@/lib/auth";
  * 被 requireUser 拒绝。matcher 只列受保护的业务区，公开页（登录/注册/落地页）、
  * API（含 /api/auth、/api/health）与静态资源不经过本文件。
  */
-export default auth((request: { auth: { user?: { id?: string } | null } } & NextRequest) => {
+export default auth((request) => {
   if (!request.auth?.user) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

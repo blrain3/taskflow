@@ -6,7 +6,7 @@ import { createIssuesFromSubtasks } from "@/lib/issue-batch";
 const mockedGetPrisma = jest.mocked(getPrisma);
 
 /** 构造一个内存版事务客户端：记录 create 的入参，count/aggregate 由用例注入 */
-function makeTx({ existingIds = [], maxPosition = null as number | null }) {
+function makeTx({ existingIds = [] as string[], maxPosition = null as number | null }) {
   const created: Array<{ id: string; position: number; workspaceId: string }> = [];
   const tx = {
     issue: {
