@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * 服务端环境变量契约（依据 docs/architecture.md §3.1）
+ * 服务端环境变量契约（依据 docs/02-architecture/architecture.md §3.1）
  *
  * 规则：
  * 1. 任何以 AI_ 开头或含 SECRET / KEY 的变量，只能被 lib/ 下的服务端模块读取，

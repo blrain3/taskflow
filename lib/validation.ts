@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ISSUE_STATUSES } from "@/types/issue";
 
 /**
- * 唯一校验真源（docs/architecture.md §6 Validation 模块）。
+ * 唯一校验真源（docs/02-architecture/architecture.md §6 Validation 模块）。
  * 前后端共用：服务端在 Action 内校验，客户端表单可复用同一份规则做即时反馈。
  * 注意：本文件不导入 server-only，也不读取环境变量。
  */

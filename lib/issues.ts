@@ -7,7 +7,7 @@ import { getPrisma } from "@/lib/prisma";
 import { isIssueStatus, type IssueItem, type IssueStatusValue } from "@/types/issue";
 
 /**
- * Issue 数据访问与领域规则（docs/architecture.md §6 Issue 模块、§8.2 链路二）。
+ * Issue 数据访问与领域规则（docs/02-architecture/architecture.md §6 Issue 模块、§8.2 链路二）。
  *
  * 两条不可违反的规则：
  * 1. 所有查询/写入都必须带 workspaceId 过滤——这是数据隔离的唯一防线。

@@ -3,7 +3,7 @@ import "server-only";
 import type { ActionError, ErrorCode } from "@/types/action";
 
 /**
- * 统一错误模型（docs/architecture.md §11）。
+ * 统一错误模型（docs/02-architecture/architecture.md §11）。
  *
  * 原则：
  * 1. 对外只暴露安全文案，内部细节只进服务端日志。

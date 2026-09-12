@@ -4,7 +4,7 @@ import nextTs from "eslint-config-next/typescript";
 import prettier from "eslint-config-prettier/flat";
 
 /**
- * 分层依赖护栏（依据 docs/architecture.md §4「依赖方向铁律」）：
+ * 分层依赖护栏（依据 docs/02-architecture/architecture.md §4「依赖方向铁律」）：
  *   app/ → components/ → actions/ → lib/ → PostgreSQL，只允许向下依赖。
  * 这里把两条最关键的反向依赖变成 lint 错误，避免靠自觉。
  */

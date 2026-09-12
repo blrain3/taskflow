@@ -5,7 +5,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { requireWorkspaceContext } from "@/lib/permissions";
 
 /**
- * 受保护区外壳（docs/architecture.md §8.1 链路一）。
+ * 受保护区外壳（docs/02-architecture/architecture.md §8.1 链路一）。
  *
  * 布局级校验只解决「首屏直接访问」的体验问题；Next.js 的布局在客户端导航时不会重新执行，
  * 因此每个受保护页面都必须自行再做一次会话校验（见 lib/auth.ts 的 requireUserOrRedirect）。

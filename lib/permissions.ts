@@ -8,7 +8,7 @@ import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 
 /**
- * Workspace 归属判定与初始化（docs/architecture.md §6 Workspace 模块）。
+ * Workspace 归属判定与初始化（docs/02-architecture/architecture.md §6 Workspace 模块）。
  *
  * 铁律：workspaceId 一律由服务端推导或校验，绝不信任客户端传入的值。
  */
