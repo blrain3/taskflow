@@ -95,12 +95,14 @@ export const deleteIssueSchema = z.object({
 /**
  * 看板拖拽落点（P0-09）。orderedIds 是目标列的完整顺序（含被拖卡片）：
  * 发整列而非「前后邻居中点值」，可避免浮点精度衰减，且并发语义清晰（整列覆盖，后写者赢）。
+ * 单个 id 限定长度：cuid 约 25 字符，64 已宽裕；不设上限会让恶意请求用超长 id
+ * 撑大 IN 查询的语句与参数体积。
  */
 export const moveIssueSchema = z.object({
   issueId: z.string().trim().min(1, { error: "缺少任务 ID" }),
   toStatus: issueStatusSchema,
   orderedIds: z
-    .array(z.string().trim().min(1))
+    .array(z.string().trim().min(1).max(64, { error: "任务 ID 不合法" }))
     .min(1, { error: "缺少排序列表" })
     .max(500, { error: "单列任务数超出上限" }),
 });

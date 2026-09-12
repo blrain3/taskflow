@@ -15,7 +15,7 @@ import {
   updateIssueSchema,
   type MoveIssueInput,
 } from "@/lib/validation";
-import { createIssuesFromSubtasks } from "@/lib/ai";
+import { createIssuesFromSubtasks } from "@/lib/issue-batch";
 import type { ActionError, ActionResult } from "@/types/action";
 import type { IssueItem } from "@/types/issue";
 

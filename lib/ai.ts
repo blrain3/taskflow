@@ -4,10 +4,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
 import { disabledFeatures, env } from "@/lib/env";
-import { isUniqueViolation } from "@/lib/db-errors";
 import { isRetryableAiError } from "@/lib/ai-retry";
 import { AppError } from "@/lib/errors";
-import { getPrisma } from "@/lib/prisma";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { parseAndValidateSubtasks } from "@/lib/ai-parser";
 import type { GeneratedSubtask } from "@/types/issue";
@@ -15,19 +13,21 @@ import type { GeneratedSubtask } from "@/types/issue";
 /**
  * AI 拆分任务（US-007 / P0-10）。
  *
+ * 模块边界（architecture.md §6）：本文件只负责「得到并校验子任务」，**不写库**——
+ * 任何不合 Schema 的返回都抛 AI_INVALID_OUTPUT，上游路由转成 5xx，UI 提示「重新生成」。
+ * AI 确认后的批量落库在 lib/issue-batch.ts。本文件禁止引入 getPrisma。
+ *
  * 设计要点：
- * 1. AI 仅产出与校验，**不写库**——任何不合 Schema 的返回都抛 AI_INVALID_OUTPUT，
- *    上游路由转成 5xx，UI 提示「重新生成」，零数据库污染。
- * 2. Provider 由环境变量 AI_PROVIDER 决定：
+ * 1. Provider 由环境变量 AI_PROVIDER 决定：
  *    - openai：真实调用（@ai-sdk/openai + OpenAI-compatible base URL，DeepSeek / OpenAI 都行）；
  *    - mock：本地预设样本，专为离线开发与冒烟；prompt 含 "TIMEOUT" 触发超时分支、"INVALID" 触发无效输出分支。
- * 3. 超时：AbortController + generateText.abortSignal，超期抛 AI_TIMEOUT。
- * 4. 限流：按 userId 每分钟 AI_RATE_LIMIT_PER_MINUTE 次（滑动窗口，见 lib/rate-limit.ts）。
+ * 2. 超时：AbortController + generateText.abortSignal，超期抛 AI_TIMEOUT。
+ * 3. 限流：按 userId 每分钟 AI_RATE_LIMIT_PER_MINUTE 次（滑动窗口，见 lib/rate-limit.ts）。
  *    **只对真正要调用上游的请求计数**，参数校验失败不占额度。
- * 5. 重试：仅对「传输层/上游 5xx」这类瞬时故障重试一次；超时与 Schema 不合**不重试**
+ * 4. 重试：仅对「传输层/上游 5xx」这类瞬时故障重试一次；超时与 Schema 不合**不重试**
  *    （重试超时只会让用户多等一个超时周期，重试无效输出等于放大错误）。
- * 6. Token 统计：真实调用取 SDK 的 usage；mock 按字符数估算，保证日志字段结构一致。
- * 7. AI_BASE_URL / AI_API_KEY / AI_MODEL 只在 lib/ 服务端模块可读，绝不出现在响应或日志值。
+ * 5. Token 统计：真实调用取 SDK 的 usage；mock 按字符数估算，保证日志字段结构一致。
+ * 6. AI_BASE_URL / AI_API_KEY / AI_MODEL 只在 lib/ 服务端模块可读，绝不出现在响应或日志值。
  */
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -198,11 +198,17 @@ export async function breakdownSubtasks(prompt: string, userId: string): Promise
 
       return { subtasks, usage, provider, attempts: attempt };
     } catch (error) {
-      // 超时与输出不合规不重试：重试只会放大等待或重复放大错误
+      // 超时与输出不合规不重试：重试只会放大等待或重复放大错误。
+      // 以 abortSignal 是否已触发为准判断超时，而不是只认 AbortError——
+      // 中断若发生在部分内容产出之后，SDK 可能以别的错误形态浮出，
+      // 此时必须仍归类为 AI_TIMEOUT，而不是误报成 AI_INVALID_OUTPUT。
       if (error instanceof AppError) {
         throw error;
       }
-      if (error instanceof DOMException && error.name === "AbortError") {
+      if (
+        controller.signal.aborted ||
+        (error instanceof DOMException && error.name === "AbortError")
+      ) {
         throw new AppError("AI_TIMEOUT");
       }
 
@@ -220,77 +226,4 @@ export async function breakdownSubtasks(prompt: string, userId: string): Promise
   }
 
   throw new AppError("INTERNAL", { detail: "AI 调用异常", cause: lastError });
-}
-
-export type BatchCreateResult = {
-  createdCount: number;
-  /** true 表示这次请求命中了幂等键，未产生新数据 */
-  duplicate: boolean;
-};
-
-/**
- * 批量事务创建（P0-11）。
- *
- * 幂等设计（不改 Schema，仍保持 ADR 冻结的六表模型）：
- * 用客户端提供的 requestId 推导确定性主键 `<requestId>:<index>`。因此
- * - 重复提交同一批次：主键已存在 → 事务内先查后建，直接返回既有结果，不产生重复任务；
- * - 并发重复提交：两条事务同时插入同一主键，落败方撞 P2002 → 读回既有结果返回，不报错；
- * - 事务中途失败：整批回滚（含已建记录），下次重试仍按同一批主键创建，不留半成品。
- *
- * 任务与批次的归属关系可由主键前缀还原（`<requestId>:`），无需额外关联表。
- */
-export async function createIssuesFromSubtasks(params: {
-  workspaceId: string;
-  requestId: string;
-  subtasks: GeneratedSubtask[];
-}): Promise<BatchCreateResult> {
-  const ids = params.subtasks.map((_, index) => `${params.requestId}:${index}`);
-  const db = getPrisma();
-
-  try {
-    return await db.$transaction(async (tx) => {
-      const existingCount = await tx.issue.count({
-        where: { id: { in: ids }, workspaceId: params.workspaceId },
-      });
-
-      if (existingCount === ids.length) {
-        return { createdCount: ids.length, duplicate: true };
-      }
-      if (existingCount > 0) {
-        // 半批次存在理论上不会出现（事务原子性）；真出现就拒绝，避免产生难以追踪的数据
-        throw new AppError("CONFLICT", { message: "该批次数据不完整，请刷新列表后重试" });
-      }
-
-      for (let index = 0; index < params.subtasks.length; index += 1) {
-        const item = params.subtasks[index];
-        await tx.issue.create({
-          data: {
-            id: ids[index],
-            workspaceId: params.workspaceId,
-            title: item.title,
-            description: item.description ?? null,
-            status: "BACKLOG",
-            position: index * 100,
-          },
-        });
-      }
-
-      return { createdCount: params.subtasks.length, duplicate: false };
-    });
-  } catch (error) {
-    if (error instanceof AppError) throw error;
-
-    // 并发落败或 requestId 撞上其它 Workspace 的既有主键：读回本批次结果，避免把 500 抛给用户
-    if (isUniqueViolation(error)) {
-      const count = await db.issue.count({
-        where: { id: { in: ids }, workspaceId: params.workspaceId },
-      });
-      if (count === ids.length) {
-        return { createdCount: ids.length, duplicate: true };
-      }
-      throw new AppError("CONFLICT", { message: "该批次标识已被占用，请重新生成子任务" });
-    }
-
-    throw error;
-  }
 }
