@@ -51,6 +51,13 @@ export function toIssueItem(row: IssueRow): IssueItem {
 export type IssueListMode = "list" | "board";
 
 /**
+ * 单次查询的硬上限（架构评审 P0-4 的过渡防线）：RSC 序列化体积、DOM 节点数与
+ * moveIssue 的整列重写代价都随任务数线性膨胀，无上限的全量查询是最直接的可扩展性天花板。
+ * 500 与 moveIssueSchema 的单列上限对齐；分列 take + 「加载更多」需要改 UI 语义，留作后续迭代。
+ */
+const ISSUE_LIST_HARD_CAP = 500;
+
+/**
  * 读取当前 Workspace 的任务。
  *
  * 两种视图的排序刻意不同，且都必须与数据库索引对齐（迁移见 prisma/migrations）：
@@ -72,6 +79,7 @@ export async function listIssues(
         ? [{ status: "asc" }, { position: "asc" }, { createdAt: "desc" }, { id: "desc" }]
         : [{ createdAt: "desc" }, { id: "desc" }],
     select: ISSUE_SELECT,
+    take: ISSUE_LIST_HARD_CAP,
   });
 
   return rows.map(toIssueItem);
