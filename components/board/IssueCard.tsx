@@ -20,16 +20,16 @@ export function CardFace({
 }) {
   return (
     <div
-      className={`rounded-lg border bg-white px-3 py-2 ${
-        overlay ? "border-zinc-300 shadow-lg" : "border-zinc-200"
+      className={`rounded-lg border bg-raised px-3 py-2 ${
+        overlay ? "border-line-strong shadow-elev-2" : "border-line"
       } ${pending ? "opacity-50" : ""}`}
     >
-      <p className="text-sm font-medium text-zinc-900">{issue.title}</p>
+      <p className="text-sm font-medium text-fg">{issue.title}</p>
       {issue.description ? (
-        <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{issue.description}</p>
+        <p className="mt-0.5 line-clamp-2 text-xs text-fg-muted">{issue.description}</p>
       ) : null}
-      <p className="mt-1 text-[11px] text-zinc-400">{issue.createdAt.slice(0, 10)}</p>
-      {pending ? <p className="mt-0.5 text-[11px] text-amber-600">同步中…</p> : null}
+      <p className="mt-1 text-[11px] text-fg-subtle">{issue.createdAt.slice(0, 10)}</p>
+      {pending ? <p className="mt-0.5 text-[11px] text-warning">同步中…</p> : null}
     </div>
   );
 }
@@ -48,7 +48,7 @@ export function SortableIssueCard({ issue, pending }: { issue: IssueItem; pendin
       style={{ transform: CSS.Transform.toString(transform), transition }}
       {...attributes}
       {...listeners}
-      className={`cursor-grab touch-none rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+      className={`cursor-grab touch-none rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
         isDragging ? "opacity-40" : ""
       }`}
       aria-label={`任务：${issue.title}`}

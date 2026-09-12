@@ -3,6 +3,11 @@
 import { useRef, useState } from "react";
 
 import { createIssuesFromSubtasksAction } from "@/actions/issue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { ActionResult } from "@/types/action";
 import type { GeneratedSubtask } from "@/types/issue";
 
@@ -159,10 +164,10 @@ export function AiBreakdownPanel() {
       </header>
 
       <div className="mt-3">
-        <label className="block text-sm font-medium text-zinc-800" htmlFor="ai-prompt">
+        <Label className="block" htmlFor="ai-prompt">
           工作描述
-        </label>
-        <textarea
+        </Label>
+        <Textarea
           id="ai-prompt"
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
@@ -170,39 +175,29 @@ export function AiBreakdownPanel() {
           maxLength={PROMPT_MAX_LENGTH}
           disabled={phase === "loading" || creating}
           placeholder="例如：实现 OAuth2 登录，支持邮箱 + GitHub 两种方式"
-          className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-zinc-100"
+          className="mt-1"
         />
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-fg-muted">
           至少 {MIN_PROMPT_LENGTH} 个字符，最多 {PROMPT_MAX_LENGTH} 个字符
         </p>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={handleBreakdown}
-          disabled={!canBreakdown}
-          className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-        >
+        <Button type="button" onClick={handleBreakdown} disabled={!canBreakdown}>
           {phase === "loading" ? "AI 拆分中…" : "AI 拆分"}
-        </button>
+        </Button>
 
         {phase === "success" && subtasks.length > 0 ? (
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={creating}
-            className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-          >
+          <Button type="button" onClick={handleCreate} disabled={creating} variant="secondary">
             {creating ? "创建中…" : `确认创建 ${subtasks.length} 个任务`}
-          </button>
+          </Button>
         ) : null}
       </div>
 
       {error ? (
         <p
           role="alert"
-          className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+          className="mt-3 rounded-lg border border-danger/30 bg-danger-subtle px-3 py-2 text-sm text-danger"
         >
           {error.message}
         </p>
@@ -211,7 +206,7 @@ export function AiBreakdownPanel() {
       {created ? (
         <p
           role="status"
-          className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+          className="mt-3 rounded-lg border border-success/30 bg-status-done-subtle px-3 py-2 text-sm text-success"
         >
           {created.duplicate
             ? `该批次已创建过，未重复写入（共 ${created.count} 个任务）`
@@ -224,26 +219,27 @@ export function AiBreakdownPanel() {
           {subtasks.map((item, index) => (
             <li key={index} className="rounded-lg border border-zinc-200 bg-white p-3">
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-zinc-400">#{index + 1}</span>
-                <button
+                <Badge>#{index + 1}</Badge>
+                <Button
                   type="button"
+                  size="sm"
+                  variant="ghost"
                   onClick={() => removeSubtask(index)}
                   disabled={creating}
-                  className="text-xs text-red-700 underline underline-offset-2 hover:text-red-900 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:no-underline"
                 >
                   删除
-                </button>
+                </Button>
               </div>
-              <input
+              <Input
                 type="text"
                 value={item.title}
                 onChange={(event) => updateSubtask(index, { title: event.target.value })}
                 maxLength={200}
                 disabled={creating}
-                className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm font-medium text-zinc-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 disabled:bg-zinc-100"
+                className="mt-1 font-medium"
                 aria-label={`子任务 ${index + 1} 标题`}
               />
-              <textarea
+              <Textarea
                 value={item.description ?? ""}
                 onChange={(event) =>
                   updateSubtask(index, {
@@ -253,7 +249,7 @@ export function AiBreakdownPanel() {
                 rows={2}
                 maxLength={2000}
                 disabled={creating}
-                className="mt-2 w-full rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 disabled:bg-zinc-100"
+                className="mt-2 min-h-0 text-xs"
                 aria-label={`子任务 ${index + 1} 描述`}
               />
             </li>

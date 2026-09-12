@@ -18,6 +18,7 @@ import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 import { BoardColumn, COLUMN_PREFIX } from "@/components/board/BoardColumn";
 import { CardFace } from "@/components/board/IssueCard";
+import { Button } from "@/components/ui/button";
 import { useBoardMove } from "@/hooks/useBoardMove";
 import {
   ISSUE_STATUSES,
@@ -141,23 +142,26 @@ export function Board({ issues: serverIssues }: { issues: IssueItem[] }) {
       {moveError ? (
         <div
           role="alert"
-          className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800"
+          className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-danger/30 bg-danger-subtle px-4 py-2 text-sm text-danger"
         >
           <span>{moveError.message}，已恢复拖动前的位置。</span>
-          <button
+          <Button
             type="button"
-            className="rounded border border-red-300 px-2 py-0.5 hover:bg-red-100"
+            size="sm"
+            className="border-danger/40 hover:bg-danger-subtle"
             onClick={moveError.retry}
           >
             重试
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="rounded px-2 py-0.5 underline underline-offset-2 hover:bg-red-100"
+            size="sm"
+            variant="ghost"
+            className="underline underline-offset-2 hover:bg-danger-subtle"
             onClick={dismissError}
           >
             忽略
-          </button>
+          </Button>
         </div>
       ) : null}
 

@@ -4,8 +4,10 @@ import { useActionState } from "react";
 
 import { deleteIssueAction, updateIssueAction, type IssueFormState } from "@/actions/issue";
 import { FieldError, FormError } from "@/components/ui/field-error";
-import { inputClassName } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   ISSUE_STATUSES,
   ISSUE_STATUS_LABELS,
@@ -72,55 +74,46 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
             <input type="hidden" name="id" value={issue.id} />
 
             <div>
-              <label
-                className="block text-sm font-medium text-zinc-800"
-                htmlFor={`title-${issue.id}`}
-              >
+              <Label className="block" htmlFor={`title-${issue.id}`}>
                 标题
-              </label>
-              <input
+              </Label>
+              <Input
                 id={`title-${issue.id}`}
                 name="title"
                 defaultValue={issue.title}
                 required
                 maxLength={200}
-                className={inputClassName}
+                className="mt-1"
                 aria-invalid={updateFields?.title ? true : undefined}
               />
               <FieldError message={updateFields?.title} />
             </div>
 
             <div>
-              <label
-                className="block text-sm font-medium text-zinc-800"
-                htmlFor={`description-${issue.id}`}
-              >
+              <Label className="block" htmlFor={`description-${issue.id}`}>
                 描述
-              </label>
-              <textarea
+              </Label>
+              <Textarea
                 id={`description-${issue.id}`}
                 name="description"
                 rows={3}
                 maxLength={2000}
                 defaultValue={issue.description ?? ""}
-                className={inputClassName}
+                className="mt-1"
                 aria-invalid={updateFields?.description ? true : undefined}
               />
               <FieldError message={updateFields?.description} />
             </div>
 
             <div>
-              <label
-                className="block text-sm font-medium text-zinc-800"
-                htmlFor={`status-${issue.id}`}
-              >
+              <Label className="block" htmlFor={`status-${issue.id}`}>
                 状态
-              </label>
+              </Label>
               <select
                 id={`status-${issue.id}`}
                 name="status"
                 defaultValue={issue.status}
-                className={inputClassName}
+                className="mt-1 block h-9 w-full rounded-md border border-line-strong bg-raised px-3 py-2 text-sm text-fg"
                 aria-invalid={updateFields?.status ? true : undefined}
               >
                 {ISSUE_STATUSES.map((status) => (
@@ -135,7 +128,7 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
             <FormError message={updateError && !updateFields ? updateError.message : undefined} />
 
             {updateSucceeded ? (
-              <p className="text-sm text-emerald-700" role="status">
+              <p className="text-sm text-success" role="status">
                 已保存
               </p>
             ) : null}
@@ -146,14 +139,14 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
 
         <details>
           <summary
-            className={`${summaryClassName} text-red-700 hover:text-red-900`}
+            className={`${summaryClassName} text-danger hover:opacity-80`}
             aria-label={`删除「${issue.title}」`}
           >
             删除
           </summary>
 
           <div className="mt-3 space-y-2">
-            <p className="text-sm text-zinc-700">确定删除「{issue.title}」？该操作不可撤销。</p>
+            <p className="text-sm text-fg-muted">确定删除「{issue.title}」？该操作不可撤销。</p>
             <FormError message={deleteError?.message} />
 
             <form
@@ -162,7 +155,7 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
               className="flex gap-2"
             >
               <input type="hidden" name="id" value={issue.id} />
-              <SubmitButton variant="ghost" className="text-red-700" pendingText="删除中…">
+              <SubmitButton variant="ghost" className="text-danger" pendingText="删除中…">
                 确认删除
               </SubmitButton>
             </form>

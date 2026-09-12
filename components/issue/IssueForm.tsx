@@ -3,8 +3,10 @@
 import { useActionState, useEffect, useRef } from "react";
 
 import { createIssueAction, type IssueFormState } from "@/actions/issue";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { FieldError, FormError } from "@/components/ui/field-error";
-import { Input, inputClassName } from "@/components/ui/input";
 import { SubmitButton } from "@/components/ui/submit-button";
 
 /** 创建任务表单（US-003）。成功后清空输入，失败时保留用户已填内容。 */
@@ -24,9 +26,9 @@ export function IssueForm() {
   return (
     <form id="create-issue-form" ref={formRef} action={formAction} className="space-y-3" noValidate>
       <div>
-        <label className="block text-sm font-medium text-zinc-800" htmlFor="issue-title">
+        <Label className="block" htmlFor="issue-title">
           任务标题
-        </label>
+        </Label>
         <Input
           id="issue-title"
           name="title"
@@ -39,16 +41,16 @@ export function IssueForm() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-zinc-800" htmlFor="issue-description">
+        <Label className="block" htmlFor="issue-description">
           描述（可选）
-        </label>
-        <textarea
+        </Label>
+        <Textarea
           id="issue-description"
           name="description"
           rows={3}
           maxLength={2000}
           placeholder="补充背景、验收条件等"
-          className={inputClassName}
+          className="mt-1"
           aria-invalid={fields?.description ? true : undefined}
         />
         <FieldError message={fields?.description} />

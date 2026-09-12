@@ -1,10 +1,10 @@
 import type { InputHTMLAttributes } from "react";
 
+import { cn } from "@/lib/utils";
+
 export const inputClassName =
-  "mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm " +
-  "text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none " +
-  "focus:ring-2 focus:ring-zinc-200";
+  "block h-9 w-full rounded-md border border-line-strong bg-raised px-3 py-2 text-sm text-fg placeholder:text-fg-subtle outline-none transition-colors focus-visible:border-focus focus-visible:ring-2 focus-visible:ring-focus/30 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={[inputClassName, className].filter(Boolean).join(" ")} />;
+  return <input {...props} className={cn(inputClassName, className)} />;
 }

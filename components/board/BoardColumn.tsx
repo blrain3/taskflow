@@ -35,7 +35,7 @@ export function BoardColumn({
       ref={setNodeRef}
       aria-label={`${label}列，共 ${items.length} 个任务`}
       className={`flex min-h-44 flex-col rounded-lg border p-2 transition-colors ${
-        isOver ? "border-blue-400 bg-blue-50" : "border-zinc-200 bg-zinc-50"
+        isOver ? "border-status-todo bg-status-todo-subtle" : "border-line bg-surface"
       }`}
     >
       <header className="flex items-center justify-between px-1 pb-2">
@@ -44,7 +44,7 @@ export function BoardColumn({
         >
           {label}
         </span>
-        <span className="text-xs text-zinc-400">{items.length}</span>
+        <span className="text-xs text-fg-subtle">{items.length}</span>
       </header>
 
       <SortableContext
@@ -61,7 +61,7 @@ export function BoardColumn({
       </SortableContext>
 
       {items.length === 0 ? (
-        <p className="mt-2 rounded-lg border border-dashed border-zinc-300 px-2 py-6 text-center text-xs text-zinc-500">
+        <p className="mt-2 rounded-lg border border-dashed border-line-strong px-2 py-6 text-center text-xs text-fg-subtle">
           拖一张卡片到这里
         </p>
       ) : null}

@@ -3,7 +3,7 @@ export function FieldError({ message }: { message?: string }) {
   if (!message) return null;
 
   return (
-    <p className="mt-1 text-sm text-red-600" role="alert">
+    <p className="mt-1 text-sm text-danger" role="alert">
       {message}
     </p>
   );
@@ -14,7 +14,7 @@ export function FormError({ message }: { message?: string }) {
   if (!message) return null;
 
   return (
-    <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+    <p className="rounded-lg bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
       {message}
     </p>
   );
