@@ -18,6 +18,15 @@ const layeringRules = {
           message: "lib/ 不得依赖 components/：五层架构只允许向下依赖。",
         },
         {
+          group: ["@/actions/*", "**/actions/*"],
+          message:
+            "lib/ 不得依赖 actions/：领域层不知道调用方是谁；需要复用 Action 逻辑时把公共部分下沉回 lib/。",
+        },
+        {
+          group: ["@/app/*", "**/app/*"],
+          message: "lib/ 不得依赖 app/：路由层是最上层，依赖只能向下。",
+        },
+        {
           group: ["react-dom", "@/hooks/*"],
           message: "lib/ 不得依赖 UI 运行时或 hooks：领域层只输出纯数据或抛领域错误。",
         },
@@ -75,8 +84,15 @@ const eslintConfig = defineConfig([
         {
           patterns: [
             {
-              group: ["@/components/*", "**/components/*", "react", "react-dom"],
-              message: "actions/ 不得依赖 UI 层：仅允许编排 lib/ 与 Prisma。",
+              group: [
+                "@/components/*",
+                "**/components/*",
+                "@/app/*",
+                "**/app/*",
+                "react",
+                "react-dom",
+              ],
+              message: "actions/ 不得依赖 UI 层与路由层：仅允许编排 lib/ 与 Prisma。",
             },
           ],
         },
