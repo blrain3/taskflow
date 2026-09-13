@@ -2,6 +2,7 @@ import "server-only";
 
 import { isUniqueViolation } from "@/lib/db-errors";
 import { AppError } from "@/lib/errors";
+import { ISSUE_POSITION_STEP } from "@/lib/issues";
 import { getPrisma } from "@/lib/prisma";
 import type { GeneratedSubtask } from "@/types/issue";
 
@@ -30,7 +31,6 @@ export type BatchCreateResult = {
 };
 
 const BACKLOG_COLUMN = "BACKLOG" as const;
-const POSITION_STEP = 100;
 
 export async function createIssuesFromSubtasks(params: {
   workspaceId: string;
@@ -62,7 +62,7 @@ export async function createIssuesFromSubtasks(params: {
         where: { workspaceId: params.workspaceId, status: BACKLOG_COLUMN },
       });
       const basePosition =
-        columnMax._max.position === null ? 0 : columnMax._max.position + POSITION_STEP;
+        columnMax._max.position === null ? 0 : columnMax._max.position + ISSUE_POSITION_STEP;
 
       for (let index = 0; index < params.subtasks.length; index += 1) {
         const item = params.subtasks[index];
@@ -73,7 +73,7 @@ export async function createIssuesFromSubtasks(params: {
             title: item.title,
             description: item.description ?? null,
             status: BACKLOG_COLUMN,
-            position: basePosition + index * POSITION_STEP,
+            position: basePosition + index * ISSUE_POSITION_STEP,
           },
         });
       }

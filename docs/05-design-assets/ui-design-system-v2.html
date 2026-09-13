@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-page-node-id="T2htFBOLNxgXVf4yhu5ffW">
+<head data-page-node-id="pZCYuBfZ5mDGfb7ec2LW6r">
+<meta charset="UTF-8" data-page-node-id="qrp2TFPqsTyC5kfDTACcfE">
+<meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="oYnj0ejTtT55A9JDJREDoc">
+<title>TaskFlow 设计规范 v2.0 · 静默</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg-canvas: #0B0B0D;
+    --bg-surface: #111114;
+    --bg-raised: #17171B;
+    --bg-overlay: #1D1D22;
+    --bg-hover: rgba(255,255,255,.055);
+    --bg-active: rgba(255,255,255,.09);
+    --border-subtle: rgba(255,255,255,.07);
+    --border-default: rgba(255,255,255,.12);
+    --border-strong: rgba(255,255,255,.20);
+    --text-primary: #F2F2F5;
+    --text-secondary: #A0A0AC;
+    --text-tertiary: #6E6E7A;
+    --brand-500: #6E5BF6;
+    --brand-hover: #7F6EFF;
+    --brand-subtle: rgba(110,91,246,.16);
+    --brand-text: #A99BFF;
+    --status-backlog: #85858F;
+    --status-todo: #5B8DEF;
+    --status-progress: #D9A03C;
+    --status-done: #3FA65C;
+    --danger: #E5484D;
+    --elev-1: 0 1px 2px rgba(0,0,0,.4);
+    --elev-2: 0 8px 24px rgba(0,0,0,.5);
+    --elev-3: 0 16px 48px rgba(0,0,0,.6);
+    --swatch-ring: rgba(255,255,255,.14);
+  }
+  [data-theme="light"] {
+    --bg-canvas: #FFFFFF;
+    --bg-surface: #FAFAFB;
+    --bg-raised: #FFFFFF;
+    --bg-overlay: #FFFFFF;
+    --bg-hover: rgba(0,0,0,.045);
+    --bg-active: rgba(0,0,0,.07);
+    --border-subtle: rgba(0,0,0,.08);
+    --border-default: rgba(0,0,0,.14);
+    --border-strong: rgba(0,0,0,.22);
+    --text-primary: #14141A;
+    --text-secondary: #5C5C68;
+    --text-tertiary: #8A8A96;
+    --brand-500: #5B48E0;
+    --brand-hover: #4B39CC;
+    --brand-subtle: rgba(91,72,224,.10);
+    --brand-text: #4A3AB8;
+    --status-backlog: #6B6B76;
+    --status-todo: #2563EB;
+    --status-progress: #B45309;
+    --status-done: #15803D;
+    --danger: #DC2626;
+    --elev-1: 0 1px 2px rgba(0,0,0,.06);
+    --elev-2: 0 4px 12px rgba(0,0,0,.10);
+    --elev-3: 0 12px 32px rgba(0,0,0,.14);
+    --swatch-ring: rgba(0,0,0,.10);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    transition: background-color .2s ease, color .2s ease;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  header.topbar {
+    position: sticky; top: 0; z-index: 20;
+    height: 56px; display: flex; align-items: center; gap: 14px;
+    padding: 0 32px;
+    background: color-mix(in srgb, var(--bg-canvas) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: .5px solid var(--border-subtle);
+  }
+  .logo { width: 22px; height: 22px; border-radius: 7px; background: var(--brand-500); flex: 0 0 auto; }
+  .brandname { font-weight: 500; font-size: 14px; letter-spacing: -.01em; }
+  .topbar .sep { color: var(--text-tertiary); }
+  .topbar .meta { font-size: 12px; color: var(--text-tertiary); }
+  .topbar .spacer { flex: 1; }
+
+  main { max-width: 1120px; margin: 0 auto; padding: 48px 32px 96px; }
+
+  .hero { margin-bottom: 56px; }
+  .hero h1 { font-size: 32px; line-height: 1.25; font-weight: 600; letter-spacing: -.02em; margin: 0 0 12px; }
+  .hero p { font-size: 15px; color: var(--text-secondary); margin: 0 0 20px; max-width: 62ch; }
+  .tagrow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag {
+    font-size: 12px; font-weight: 500; padding: 3px 10px;
+    border-radius: 999px; border: .5px solid var(--border-default);
+    color: var(--text-secondary); background: var(--bg-surface);
+  }
+  .tag.on { background: var(--brand-subtle); border-color: transparent; color: var(--brand-text); }
+
+  section { margin-bottom: 56px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .sec-num { font-size: 12px; font-weight: 500; color: var(--brand-text); letter-spacing: .04em; }
+  .sec-head h2 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+  .sec-desc { font-size: 13px; color: var(--text-secondary); margin: 0 0 24px; max-width: 74ch; }
+
+  .card {
+    background: var(--bg-raised);
+    border: .5px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+  .card + .card { margin-top: 14px; }
+  .card-label { font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: 0 0 14px; }
+
+  .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+
+  .sw { }
+  .sw-chip { height: 56px; border-radius: 10px; box-shadow: inset 0 0 0 .5px var(--swatch-ring); }
+  .sw-name { font-size: 12px; margin-top: 8px; font-weight: 500; }
+  .sw-hex { font-size: 11px; color: var(--text-tertiary); }
+  .sw-note { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  .rowsplit { display: flex; align-items: baseline; gap: 16px; padding: 9px 0; border-bottom: .5px solid var(--border-subtle); }
+  .rowsplit:last-child { border-bottom: none; }
+  .rowsplit .k { flex: 0 0 156px; font-size: 11px; color: var(--text-tertiary); }
+
+  table.spec { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.spec th {
+    text-align: left; font-weight: 500; font-size: 12px; color: var(--text-tertiary);
+    padding: 8px 12px 8px 0; border-bottom: .5px solid var(--border-default);
+  }
+  table.spec td { padding: 10px 12px 10px 0; border-bottom: .5px solid var(--border-subtle); vertical-align: top; }
+  table.spec td:first-child { font-weight: 500; white-space: nowrap; }
+  table.spec tr:last-child td { border-bottom: none; }
+
+  .btnrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button.b {
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    height: 32px; padding: 0 16px; border-radius: 6px;
+    border: .5px solid transparent; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background-color 80ms ease, border-color 80ms ease, color 80ms ease, transform 80ms ease;
+  }
+  button.b:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+  button.b.primary { background: var(--brand-500); color: #fff; }
+  button.b.primary:hover { background: var(--brand-hover); }
+  button.b.secondary { background: var(--bg-raised); border-color: var(--border-default); color: var(--text-primary); }
+  button.b.secondary:hover { background: var(--bg-hover); }
+  button.b.ghost { background: transparent; color: var(--text-secondary); }
+  button.b.ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+  button.b.danger { background: var(--danger); color: #fff; }
+  button.b.danger:hover { filter: brightness(1.08); }
+  button.b[disabled] { opacity: .5; cursor: not-allowed; }
+  button.b.sm { height: 28px; font-size: 13px; padding: 0 12px; }
+  button.b.lg { height: 40px; font-size: 14px; }
+
+  input.tf, textarea.tf {
+    font-family: inherit; font-size: 13px; width: 100%;
+    height: 32px; padding: 0 10px; border-radius: 8px;
+    background: var(--bg-canvas); color: var(--text-primary);
+    border: .5px solid var(--border-default);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  input.tf:focus, textarea.tf:focus {
+    outline: none; border-color: var(--brand-500);
+    box-shadow: 0 0 0 3px var(--brand-subtle);
+  }
+  input.tf::placeholder, textarea.tf::placeholder { color: var(--text-tertiary); }
+
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 999px; border: .5px solid var(--border-default); color: var(--text-secondary); background: var(--bg-raised); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+  .kbd {
+    font-size: 12px; font-weight: 500; padding: 2px 6px; border-radius: 4px;
+    background: var(--bg-surface); border: .5px solid var(--border-default);
+    color: var(--text-secondary); white-space: nowrap;
+  }
+
+  .shell { display: flex; border: .5px solid var(--border-subtle); border-radius: 12px; overflow: hidden; background: var(--bg-canvas); min-height: 300px; }
+  .shell .sb { width: 176px; flex: 0 0 auto; background: var(--bg-surface); border-right: .5px solid var(--border-subtle); padding: 10px 8px; }
+  .navitem { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-radius: 6px; font-size: 13px; color: var(--text-secondary); }
+  .navitem.active { background: var(--brand-subtle); color: var(--brand-text); font-weight: 500; }
+  .shell .maincol { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .shell .tbar { height: 42px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: .5px solid var(--border-subtle); }
+  .shell .vbar { height: 40px; flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: .5px solid var(--border-subtle); }
+  .seg { display: flex; border: .5px solid var(--border-subtle); border-radius: 6px; overflow: hidden; }
+  .seg span { font-size: 12px; padding: 4px 11px; color: var(--text-secondary); }
+  .seg span.on { background: var(--bg-active); color: var(--text-primary); font-weight: 500; }
+  .cols { flex: 1; display: flex; gap: 12px; padding: 14px; min-height: 0; overflow-x: auto; }
+  .col { flex: 1 1 0; min-width: 150px; }
+  .col-h { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+  .col-h .n { color: var(--text-tertiary); }
+  .icard { background: var(--bg-raised); border: .5px solid var(--border-subtle); border-radius: 10px; padding: 10px; margin-bottom: 8px; transition: background-color 80ms ease, border-color 80ms ease, box-shadow 80ms ease; }
+  .icard:hover { background: var(--bg-hover); border-color: var(--border-default); box-shadow: var(--elev-1); }
+  .icard .t { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .icard .m { font-size: 11px; color: var(--text-tertiary); }
+  .dropzone { border: .5px dashed var(--border-strong); border-radius: 10px; padding: 18px 8px; text-align: center; font-size: 12px; color: var(--text-tertiary); }
+  .card-dragging { box-shadow: var(--elev-2); border-color: var(--border-default); transform: rotate(1.5deg) scale(1.02); }
+
+  .principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .pr { border: .5px solid var(--border-subtle); border-radius: 10px; padding: 14px 16px; background: var(--bg-raised); }
+  .pr .n { font-size: 11px; color: var(--brand-text); font-weight: 500; margin-bottom: 6px; }
+  .pr .t { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .pr .d { font-size: 12px; color: var(--text-secondary); line-height: 1.55; }
+
+  .note { font-size: 12px; color: var(--text-secondary); border-left: 2px solid var(--brand-500); padding-left: 12px; margin-top: 16px; line-height: 1.6; }
+  .warn { border-left-color: var(--status-progress); }
+  footer { border-top: .5px solid var(--border-subtle); padding-top: 20px; font-size: 12px; color: var(--text-tertiary); }
+</style>
+</head>
+<body data-page-node-id="Dpk3wBBNZDtumkrN4dR7Wl">
+
+<header class="topbar" data-page-node-id="o1IjyYCnWCNG6aZsV6Y3SV">
+  <div class="logo" data-page-node-id="uV4BB7YhT6tSklFb1B7k87"></div>
+  <span class="brandname" data-page-node-id="Dk6wyAmirNYnJDBI80fgaM">TaskFlow 设计规范</span>
+  <span class="sep" data-page-node-id="8ZyCQlEE2P0yyBInqWfbtF">·</span>
+  <span class="meta" data-page-node-id="JjQWH1wYMMOV33J5C3IJ1c">v2.0 「静默」</span>
+  <div class="spacer" data-page-node-id="7Gs0aomdvANZFMFOZFBMfz"></div>
+  <button class="b secondary sm" id="themeBtn" type="button" data-page-node-id="biP7E2nkkwKPWxN5Ht3bs2">切换为浅色</button>
+</header>
+
+<main data-page-node-id="BnuCGR2b6sL3cp06gMfKY5">
+
+  <div class="hero" data-page-node-id="0BCBQ5SbA5QTxS7qaDggWi">
+    <h1 data-page-node-id="EvdfxyPaqaY4XtcSYx1V4O">一套为「记录摩擦」而设计的界面</h1>
+    <p data-page-node-id="gnYKOO2rEleVx3WqNdfDq1">TaskFlow 是面向个人的 AI 任务协作平台。本方案的目标是让技术用户在 10 秒内把想法变成可追踪的任务，同时让初次接触的人在 5 秒内看懂产品价值。平台策略为<strong data-page-node-id="arIeoe2opXCRFwdFouwrCD">桌面端 Web 优先</strong>，平板与移动端 Web 作为降级适配。</p>
+    <div class="tagrow" data-page-node-id="QM2ldpdROyfovRteE7pbZO">
+      <span class="tag on" data-page-node-id="HYo0H5e0H7i6as0yMQjEbi">桌面 1440×900 基准</span>
+      <span class="tag" data-page-node-id="hwBE2opG6Tf8PdHBvatfzQ">深色优先</span>
+      <span class="tag" data-page-node-id="3ansjb0EMS9P1JqpczxMQt">键盘平行</span>
+      <span class="tag" data-page-node-id="kjzEjZmYnL3qUD6QAdV93T">WCAG 2.1 AA</span>
+      <span class="tag" data-page-node-id="zNCo7tOS7yCTSVSK4M63nr">Tailwind v4 令牌驱动</span>
+    </div>
+  </div>
+
+  <section data-page-node-id="3xmJTQVpxtZGThIUFFXrnl">
+    <div class="sec-head" data-page-node-id="8J4zKqaOpExdaZeerUElce"><span class="sec-num" data-page-node-id="2OwwBPxS2D3VH1RK1zWM9h">01</span><h2 data-page-node-id="JklVIYCAy6cecCfyBPn8Bk">设计原则</h2></div>
+    <p class="sec-desc" data-page-node-id="gozwvN9LIcTog1WPjAbjdb">五条原则按优先级排列。原则 P3「状态诚实」是本项目的强制约束——任何异步交互缺少五态中的任一态，视为设计未完成。</p>
+    <div class="principles" data-page-node-id="B05xTZjMqoXO3kEyo4WMOi">
+      <div class="pr" data-page-node-id="LrAa2a2Gxq66qHG4Zvydo3"><div class="n" data-page-node-id="jCBnpyJgPMuCgmvhxf495y">P1</div><div class="t" data-page-node-id="fr9KENyHiDVLgCANSnAR4q">内容优先</div><div class="d" data-page-node-id="eHyxazAF1R6uZKaDunwVQE">界面是任务的容器。删掉所有装饰，层级只靠留白与对比建立。</div></div>
+      <div class="pr" data-page-node-id="VqAshS89P9cbBXCLYdtcAw"><div class="n" data-page-node-id="OsFd4kIbTjbqvAqmIoCAr7">P2</div><div class="t" data-page-node-id="rUlYi8VYjvWr0ee4kCXn7A">键盘平行</div><div class="d" data-page-node-id="oLgSfz02dGiKTRs4cdK66H">鼠标能做的键盘都能做，且更快。拖拽必须有键盘替代路径。</div></div>
+      <div class="pr" data-page-node-id="Bc7DNDfLVcdEi7tJQJJD0w"><div class="n" data-page-node-id="5utKVAPIYrRaenxXfaMIv4">P3</div><div class="t" data-page-node-id="Ruj2FuFn134d5bexmMGICL">状态诚实</div><div class="d" data-page-node-id="NUKcDy8o5mSRtaBFAhjYoZ">idle / loading / empty / error / success 五态全覆盖，绝不展示虚假成功。</div></div>
+      <div class="pr" data-page-node-id="CHxk0gtF5K4JIoWjDNMXrA"><div class="n" data-page-node-id="eCxyyihCBuK8BwRDcGAuRu">P4</div><div class="t" data-page-node-id="O3ziCvgAMmqzdRuQ0FOTHJ">密度自选</div><div class="d" data-page-node-id="8EAi2Hz1DJoDCiZ2jlGIjF">同一套令牌支持紧凑与舒适两档密度，无需重写组件。</div></div>
+      <div class="pr" data-page-node-id="Xq5MGSNXSOWBq5TIaTXjFa"><div class="n" data-page-node-id="IPAqFBRgZbAGKvELKdpJUI">P5</div><div class="t" data-page-node-id="OepywfJuP16KnvITJfuUoz">深浅同源</div><div class="d" data-page-node-id="CQM69pw0m2L0L172LMHYuJ">浅色是深色的变量替换结果，不是第二套设计。</div></div>
+    </div>
+  </section>
+
+  <section data-page-node-id="7MPGvg7CXolAbLTJjoxbi5">
+    <div class="sec-head" data-page-node-id="pzP2TiTYzBEJHPHiCS7Uj6"><span class="sec-num" data-page-node-id="Bd2ouWCfTRscp6wBRhrLFY">02</span><h2 data-page-node-id="zzGxwPuxPxK7emXsZTmftY">色彩令牌</h2></div>
+    <p class="sec-desc" data-page-node-id="qlYyMTUvVb4jbEAxN5BUJy">令牌分三层：原始值只定义不引用，语义层承载全部用法，组件层仅在特殊需求时新增。以下数值随右上角主题实时切换。</p>
+
+    <div class="card" data-page-node-id="Wl8WoNEuuG4kYovXDsc8Bu">
+      <p class="card-label" data-page-node-id="bZn7Q95nP5fJ9mKslQIB0C">表面层级 · Surface</p>
+      <div class="grid-4" data-page-node-id="XdTd3D4HlNlBeOrtZMQ84y">
+        <div class="sw" data-page-node-id="BoMCpo04aKAD8P6qhSA8DY"><div class="sw-chip" style="background: var(--bg-canvas)" data-hx="dark:#0B0B0D / light:#FFFFFF" data-page-node-id="1nqVjJTb1zWR55YKi1MS0i"></div><div class="sw-name" data-page-node-id="h1EsXbGGDZu5cjeLV7wXA5">canvas</div><div class="sw-hex mono" data-hx="dark:#0B0B0D / light:#FFFFFF" data-page-node-id="vd74ckc71QMqtWxchr9Rf1"></div><div class="sw-note" data-page-node-id="elATQSBlGG3HP7F1IhNVK9">应用最底层画布</div></div>
+        <div class="sw" data-page-node-id="xSXuPiPjeZ79QJ2ovsPrcb"><div class="sw-chip" style="background: var(--bg-surface)" data-hx="dark:#111114 / light:#FAFAFB" data-page-node-id="XYt86XiC8fuCOdzuTRGFCm"></div><div class="sw-name" data-page-node-id="34HZAF8pwO6mZn8tK477Wz">surface</div><div class="sw-hex mono" data-hx="dark:#111114 / light:#FAFAFB" data-page-node-id="mQR1Ix3JAB2UBhUiknBklC"></div><div class="sw-note" data-page-node-id="1C6WOoYXbgWRMFfUSuXcN2">侧边栏、看板列</div></div>
+        <div class="sw" data-page-node-id="h0qDjiInVtYEWmGWFMktr9"><div class="sw-chip" style="background: var(--bg-raised)" data-hx="dark:#17171B / light:#FFFFFF" data-page-node-id="KgGoZlDcCOTnJQSwFVArRU"></div><div class="sw-name" data-page-node-id="GCfDyg4XPV2JizEMjp8LtH">raised</div><div class="sw-hex mono" data-hx="dark:#17171B / light:#FFFFFF" data-page-node-id="mZXgS9rocbD9JbCFzTRIPW"></div><div class="sw-note" data-page-node-id="H3Ebw33Lh9KJi2y59DINBl">卡片、抽屉、弹窗</div></div>
+        <div class="sw" data-page-node-id="Y3GDLDnTPiwSJ6Q9Z2LtPI"><div class="sw-chip" style="background: var(--bg-overlay)" data-hx="dark:#1D1D22 / light:#FFFFFF" data-page-node-id="aVJCeOJQoyBdS4qF6ddTbf"></div><div class="sw-name" data-page-node-id="q9JkTIQQlDA0y2XwYDldVe">overlay</div><div class="sw-hex mono" data-hx="dark:#1D1D22 / light:#FFFFFF" data-page-node-id="xXwEaD0Rhcr44FDZniAE6F"></div><div class="sw-note" data-page-node-id="p0JWtKfgr3W3JC0vJ7ukVP">菜单、命令面板</div></div>
+      </div>
+    </div>
+
+    <div class="card" data-page-node-id="QuEBc8CMgRjiOHfI9ApYCk">
+      <p class="card-label" data-page-node-id="iWyYejIbSL42OTjzXQtb2i">文字层级 · 括号内为对背景的对比度</p>
+      <div class="rowsplit" data-page-node-id="fLbSQLOm4H7JmSncPnRBnT"><span class="k mono" data-page-node-id="ZEfAzJujlnu1f4kSeKYoA9">--text-primary</span><span style="color: var(--text-primary); font-size: 15px;" data-page-node-id="8Ecr00yFz50ZbXKJwrXyUw">任务标题与正文 · 17.6:1</span><span class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-left: auto;" data-hx="dark:#F2F2F5 / light:#14141A" data-page-node-id="J1bZWRGo2dtEGE0W4ozwEj"></span></div>
+      <div class="rowsplit" data-page-node-id="9L03162ZZw96OpM8Ash0Cu"><span class="k mono" data-page-node-id="8Zu8NDMUlraH0864NfHvZd">--text-secondary</span><span style="color: var(--text-secondary); font-size: 14px;" data-page-node-id="I1OTNCtGNRUieFQVwB8FRR">描述与元信息 · 7.3:1</span><span class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-left: auto;" data-hx="dark:#A0A0AC / light:#5C5C68" data-page-node-id="MCCBCL1XvctJNzXcRHemLg"></span></div>
+      <div class="rowsplit" data-page-node-id="YkYI2b3vJ9gMIlmw72MbML"><span class="k mono" data-page-node-id="E2JcthRR9ylQ4X6rKAbOuk">--text-tertiary</span><span style="color: var(--text-tertiary); font-size: 14px;" data-page-node-id="0ZzTdBAf3uTsY1t640fyRK">时间戳与计数 · 3.6:1，仅限 ≥16px</span><span class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-left: auto;" data-hx="dark:#6E6E7A / light:#8A8A96" data-page-node-id="7w4xxErYxVKgjAtzPLZYVl"></span></div>
+      <div class="note warn" data-page-node-id="5Xd307n1n3cjfeTOpBnfgL"><code class="mono" data-page-node-id="nrDtkLNH28y4az6NWEA0L4">--text-tertiary</code> 未达 AA 正文标准，不得承载用户必须读到的信息（如任务标题、错误提示），仅用于可推断或非必要内容。</div>
+    </div>
+
+    <div class="card" data-page-node-id="9DQ3ZpHyiCg2DyYo0UIEhI">
+      <p class="card-label" data-page-node-id="C4vV1ibAoh07qD0pMMO4XB">品牌色与状态色 · 状态色文本对比度均 ≥ 5.0:1</p>
+      <div class="grid-4" data-page-node-id="v0lYck8ETTFUB2JRDAUTy4">
+        <div class="sw" data-page-node-id="bWeIe2J2BIH7RtvNTBclPV"><div class="sw-chip" style="background: var(--brand-500)" data-hx="dark:#6E5BF6 / light:#5B48E0" data-page-node-id="FF7y2PVBf8mAxHYBPTrzbc"></div><div class="sw-name" data-page-node-id="JQvsoI6jeTukUVkPDiIrT8">brand-500</div><div class="sw-hex mono" data-hx="dark:#6E5BF6 / light:#5B48E0" data-page-node-id="WXEzWHsQ8N5nuFuAKZSllb"></div><div class="sw-note" data-page-node-id="vjsTVCcnMHdkYrA81rNrpz">主按钮 · 唯一强调色</div></div>
+        <div class="sw" data-page-node-id="pCLHHRNBD8H1a4AUij8cBL"><div class="sw-chip" style="background: var(--status-backlog)" data-hx="dark:#85858F / light:#6B6B76" data-page-node-id="ygoCeyMz7gmZ01Q47yeAjT"></div><div class="sw-name" data-page-node-id="sEpKbnJJgyGGYT415rcPLU">status-backlog</div><div class="sw-hex mono" data-hx="dark:#85858F / light:#6B6B76" data-page-node-id="yKA5YFdoimMeMjaGpD70AA"></div><div class="sw-note" data-page-node-id="mK8XUX86QCQ8XTJYDiR6rP">BACKLOG 待整理</div></div>
+        <div class="sw" data-page-node-id="ZTHJKDw1SxAuMgbTTZGtYy"><div class="sw-chip" style="background: var(--status-todo)" data-hx="dark:#5B8DEF / light:#2563EB" data-page-node-id="HYSdeylqZeHCjun5SDGpWl"></div><div class="sw-name" data-page-node-id="OxyAwvp5zw8J8Ytms2yFAS">status-todo</div><div class="sw-hex mono" data-hx="dark:#5B8DEF / light:#2563EB" data-page-node-id="XBA91FEFgUCxlhYvjD650E"></div><div class="sw-note" data-page-node-id="y6m6hcbLIkNSb16fTP1nQB">TODO 待开始</div></div>
+        <div class="sw" data-page-node-id="IspUdRJDs8he38igFupKmI"><div class="sw-chip" style="background: var(--status-progress)" data-hx="dark:#D9A03C / light:#B45309" data-page-node-id="24NdZSjaVZkyqbNotxxrDx"></div><div class="sw-name" data-page-node-id="viNH0OdCJwO97YzVDk7ZNh">status-progress</div><div class="sw-hex mono" data-hx="dark:#D9A03C / light:#B45309" data-page-node-id="HkmtMEgqTrja1yAY28YMSW"></div><div class="sw-note" data-page-node-id="JraRLxuIMHvjuHLHpOZj43">IN_PROGRESS 进行中</div></div>
+        <div class="sw" data-page-node-id="RBbmgdm8W5ORylhwpgvsfU"><div class="sw-chip" style="background: var(--status-done)" data-hx="dark:#3FA65C / light:#15803D" data-page-node-id="AzPcgmnhz7ctrBBMkBb4Iw"></div><div class="sw-name" data-page-node-id="APBVmnb8dT2uBg1BvEF2BB">status-done</div><div class="sw-hex mono" data-hx="dark:#3FA65C / light:#15803D" data-page-node-id="yeDEBVYlzmB6UWBCHBzrSG"></div><div class="sw-note" data-page-node-id="wDr9EpL7JbGDGezDPsSUg6">DONE 已完成</div></div>
+        <div class="sw" data-page-node-id="fDRhdbHOQpTODHzaY8orfT"><div class="sw-chip" style="background: var(--danger)" data-hx="dark:#E5484D / light:#DC2626" data-page-node-id="w3DyYcYCXZxpufhNzbR9Qt"></div><div class="sw-name" data-page-node-id="LFoNFCdokVw8NZ00mvdAY1">color-danger</div><div class="sw-hex mono" data-hx="dark:#E5484D / light:#DC2626" data-page-node-id="8BbkNR4rt6X4yYQ7bJ06VD"></div><div class="sw-note" data-page-node-id="DH0Ds40FOF4Hel9BVCCitB">删除等危险操作</div></div>
+      </div>
+      <div class="note" data-page-node-id="ymdBwQ58i4nCqVGXHhgxR5">v1.0 让紫色同时承担品牌强调与「进行中」状态，在看板上会互相干扰。v2 将紫色独占给品牌与交互，状态色改用独立家族：待办池灰、待处理蓝、进行中黄、已完成绿。</div>
+    </div>
+  </section>
+
+  <section data-page-node-id="3BLjWKg9ghBynHk3dRIA1C">
+    <div class="sec-head" data-page-node-id="vzeYWjNyVIF8Psea82mWhn"><span class="sec-num" data-page-node-id="Q8EddeYlCcw3DkfyfhZtcN">03</span><h2 data-page-node-id="bHjdT9qzQc3EMzPT6BuWCN">字体与间距</h2></div>
+    <p class="sec-desc" data-page-node-id="ytdkkxA7n4x1NbfYtyI3xT">工具型产品以 14px 为正文基准而非 16px，用更小的字号换取信息密度。中文不得小于 12px，字重只用 400 / 500 / 600，避免浏览器伪粗体把笔画糊掉。</p>
+    <div class="card" data-page-node-id="16RnBcKBMfulkF68M1m9Yl">
+      <div class="rowsplit" data-page-node-id="QOji2Ga5WveXScbvtGsZc2"><span class="k mono" data-page-node-id="Jv76TV306kYHk4BSEBNpI6">display 32 / 40 · 600</span><span style="font-size: 26px; font-weight: 600; letter-spacing: -.02em;" data-page-node-id="Bdy9JcaakhfYguTjnYuYjU">还没有任务，很清静</span></div>
+      <div class="rowsplit" data-page-node-id="5cFjkgsN3sV4DiVPDbBowh"><span class="k mono" data-page-node-id="kEXHnY10UtSPBpiK2FaUMa">h1 24 / 32 · 600</span><span style="font-size: 22px; font-weight: 600; letter-spacing: -.015em;" data-page-node-id="kKqk0DRJIeBVelBNvf37ep">工作区概览</span></div>
+      <div class="rowsplit" data-page-node-id="MuH2McjBYg66v1dy0k7XXv"><span class="k mono" data-page-node-id="PV6grEUWrIfMW10AOpQn3m">h2 20 / 28 · 600</span><span style="font-size: 18px; font-weight: 600;" data-page-node-id="eXvFB2hIwdqAp1LQ20nXFm">AI 生成的子任务</span></div>
+      <div class="rowsplit" data-page-node-id="9EgJ7ZfHpNxW1r1tE06BG2"><span class="k mono" data-page-node-id="XDeXEHJu8NTWHgWjDrCuGv">h3 16 / 24 · 600</span><span style="font-size: 16px; font-weight: 600;" data-page-node-id="Vu9xwCf9ZEfLV9GCYAknJK">进行中</span></div>
+      <div class="rowsplit" data-page-node-id="XnaxE112Lw7ymicaLj8Nsq"><span class="k mono" data-page-node-id="cCLBssdPklr8TfrVmfBosg">body 14 / 22 · 400</span><span style="font-size: 14px;" data-page-node-id="cUE9Hs0cJz0euWvC3nGVWf">接入微信与支付宝账单下载接口，补齐事务一致性处理</span></div>
+      <div class="rowsplit" data-page-node-id="K1Dudww672n4Di4Dis5H7t"><span class="k mono" data-page-node-id="qfP38KnKurV6FUWwcTf9Cj">small 13 / 20 · 400</span><span style="font-size: 13px; color: var(--text-secondary);" data-page-node-id="3sNC1YhpIZoIuqgpSrIFFH">标题上限 200 字符，超出将被拒绝</span></div>
+      <div class="rowsplit" data-page-node-id="D8nXG5H5kDnAFYylvegR9w"><span class="k mono" data-page-node-id="bk5v5vxUgOd4sEDwWrBrAW">caption 12 / 16 · 500</span><span style="font-size: 12px; font-weight: 500; color: var(--text-secondary);" data-page-node-id="CHBtnnA2PX0DPiGSgs0ruY">TF-142 · 2 天前更新</span></div>
+      <div class="rowsplit" data-page-node-id="XeM8Hc6EvVZEJNC93n7sLg"><span class="k mono" data-page-node-id="W6a8U0b8pVJj20gRgiUB3o">mono 13 / 20 · 500</span><span class="mono" style="font-size: 13px;" data-page-node-id="bgJrhHmWcAdsmBGUcdAJuY">⌘K &nbsp;·&nbsp; TF-142</span></div>
+    </div>
+    <div class="card" data-page-node-id="SnDQ7O8U3DFIO2hyYqF2as">
+      <p class="card-label" data-page-node-id="9BHtpYMfUNor45FcsrFYGC">间距与圆角</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 18px;" data-page-node-id="fTPyk5dbHR8foxo9JZgS5Z">
+        <div data-page-node-id="yAMzAp9QvymxNvzdDkzRtJ"><div style="width: 4px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="IDjbgcgMsHuFX4DW6bSLtR"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="4GcyUnxkXGowADBCxP065v">4</div></div>
+        <div data-page-node-id="dvy0Dng1dNeinXRxLMfJ6L"><div style="width: 8px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="0A1LdOFVteN0Ac94aAxJtk"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="Xs41jHE48cEhjaCtD7IGos">8</div></div>
+        <div data-page-node-id="Jc74F2nEIFjgdjKuyi4Xdv"><div style="width: 12px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="6f6ozYdEtlZDkt2NihMSxA"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="ux56aU9HVLocM1xvnJFib3">12</div></div>
+        <div data-page-node-id="141MgUzRBBRBzCJGKURtcz"><div style="width: 16px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="IPz0TSQNyWuKmUJkuz9YVF"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="lXhwva5VTxScy6AjMzsvi8">16</div></div>
+        <div data-page-node-id="4usZW6KDKjDc8Ym2dm3s5b"><div style="width: 20px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="kEWtKpdN27phtzoln6DiV1"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="s86KxDSHS23xHuU6sUwJeD">20</div></div>
+        <div data-page-node-id="sye1ZotdWH7I3gzVExfDSh"><div style="width: 24px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="bQd0C5dx3nZ8NzNBGglTjC"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="8R422SIqbOJqQT2wJFoClz">24</div></div>
+        <div data-page-node-id="IM3odbYR9P0y3XET6zRjrW"><div style="width: 32px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="vRVjdBsBG6LU15ZxbugRrM"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="096o5EApOFGi7SL416rHOo">32</div></div>
+        <div data-page-node-id="itsP6oXPIV9sjk9EEFHdGf"><div style="width: 40px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="nA8JYz5SImFRBmJXgiSUGJ"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="4RCnAHigRWa3t8jWXohDkj">40</div></div>
+        <div data-page-node-id="dvmmw4s7i1iLOwuWCQqMon"><div style="width: 64px; height: 24px; background: var(--brand-500); border-radius: 2px;" data-page-node-id="Q5ljoMM8xr4mGcQ4O0uv9C"></div><div class="mono" style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;" data-page-node-id="lQvtkhsnwPpCWTOfrz93Nz">64</div></div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: center;" data-page-node-id="hbxHpDCXrr9niMY23yL0l3">
+        <div style="width: 56px; height: 40px; border-radius: 4px; background: var(--bg-surface); border: .5px solid var(--border-default); display: flex; align-items: center; justify-content: center;" class="mono" data-page-node-id="gsMyvzvuU6djL2RPbLoYwP"><span style="font-size: 11px; color: var(--text-tertiary);" data-page-node-id="8D0FmlzpXY7qCksTlxopjR">4</span></div>
+        <div style="width: 56px; height: 40px; border-radius: 6px; background: var(--bg-surface); border: .5px solid var(--border-default); display: flex; align-items: center; justify-content: center;" class="mono" data-page-node-id="gRYuuMgnnUMC9XKZtafhB1"><span style="font-size: 11px; color: var(--text-tertiary);" data-page-node-id="MXPFq8hQZH2gzf2WkB9zA4">6</span></div>
+        <div style="width: 56px; height: 40px; border-radius: 8px; background: var(--bg-surface); border: .5px solid var(--border-default); display: flex; align-items: center; justify-content: center;" class="mono" data-page-node-id="1B7NlFskRGDIPscSDFExLU"><span style="font-size: 11px; color: var(--text-tertiary);" data-page-node-id="qYWJ5gXUporVww5Jk1jhAw">8</span></div>
+        <div style="width: 56px; height: 40px; border-radius: 10px; background: var(--bg-surface); border: .5px solid var(--border-default); display: flex; align-items: center; justify-content: center;" class="mono" data-page-node-id="WkTuf9C2EDBvTNxVT5YHhq"><span style="font-size: 11px; color: var(--text-tertiary);" data-page-node-id="vgftCA1NAvRnPyEpxotrQY">10</span></div>
+        <div style="width: 56px; height: 40px; border-radius: 12px; background: var(--bg-surface); border: .5px solid var(--border-default); display: flex; align-items: center; justify-content: center;" class="mono" data-page-node-id="0zjSGH5jkZv9CpFSz0Anqf"><span style="font-size: 11px; color: var(--text-tertiary);" data-page-node-id="8oME2VZgh8uMM6niULIxAR">12</span></div>
+        <div style="width: 56px; height: 40px; border-radius: 16px; background: var(--bg-surface); border: .5px solid var(--border-default); display: flex; align-items: center; justify-content: center;" class="mono" data-page-node-id="qTg6Dekq3C4q9cgNmACKSU"><span style="font-size: 11px; color: var(--text-tertiary);" data-page-node-id="naIoURhoCoscgjKQwp63ct">16</span></div>
+      </div>
+      <div class="note" data-page-node-id="V67RSrkYjrAHTn7F4B9EWz">深色界面下传统投影几乎不可见，因此层级由「边框 + 极低透明度投影」双通道表达：卡片悬停用 elev-1，拖拽中的卡片与菜单用 elev-2，抽屉与命令面板用 elev-3。</div>
+    </div>
+  </section>
+
+  <section data-page-node-id="1AAGPwpijxiMFc3IqYg3hD">
+    <div class="sec-head" data-page-node-id="0Hdn4uN3G5OIHXTHK8CK2V"><span class="sec-num" data-page-node-id="Xf92B1FU0MQkE00FTuG3vb">04</span><h2 data-page-node-id="WQcc1XtO8fNYL2tXepejxA">应用外壳布局</h2></div>
+    <p class="sec-desc" data-page-node-id="biv7N9KvzX3HjjmicKQvrL">三栏结构：全局导航（240px，可折叠为 56px 图标轨）、内容区（唯一滚动容器）、对象抽屉（380px，仅详情态出现）。抽屉打开时内容区最小宽度保持 720px，不足则按「先折叠侧边栏 → 抽屉改覆盖式 → 抽屉改整页」的顺序妥协。</p>
+    <div class="shell" data-page-node-id="s3v52kmrhf4om0evKKoZXQ">
+      <div class="sb" data-page-node-id="jbQQCrdeEOY4AukqkVcfOW">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: .5px solid var(--border-subtle); border-radius: 6px; margin-bottom: 10px; background: var(--bg-raised);" data-page-node-id="dCnlBJJeh9UssBgHn3ecyo">
+          <div style="width: 16px; height: 16px; border-radius: 5px; background: var(--brand-500);" data-page-node-id="onQ8Z0wGAQHekNwW11o09s"></div>
+          <span style="font-size: 13px; font-weight: 500;" data-page-node-id="KtQgKSR8gsSKRHBW5nlOyJ">我的工作区</span>
+        </div>
+        <div class="navitem active" data-page-node-id="91uqfwqZGKtbxoXVPXiAZv"><span data-page-node-id="NcCBOf20QbkZ5HDDxGKiur">概览</span></div>
+        <div class="navitem" data-page-node-id="ShAMnIHlle8j91iuJCO6oC"><span data-page-node-id="0u4SLk1ViUCblqAHj5AHNs">任务</span><span style="color: var(--text-tertiary); font-size: 12px;" data-page-node-id="QRGksWiFiFkn2Gl3JvJtOe">12</span></div>
+        <div class="navitem" data-page-node-id="2m93q8KaBpZyVlfn0xAa7t"><span data-page-node-id="4wQwHVHisBCw1i13FltMOt">AI 拆解</span></div>
+        <div class="navitem" data-page-node-id="bJH8OQMY6a5VdYTGY0PBAF"><span data-page-node-id="dBGE2QHcF8V5voOtDlyQJV">设置</span></div>
+        <div style="border-top: .5px solid var(--border-subtle); margin: 10px 8px 8px;" data-page-node-id="jAWe0kJR8sLJURO2VD22Fk"></div>
+        <div class="navitem" style="color: var(--text-tertiary); font-size: 12px; padding: 4px 8px;" data-page-node-id="5Q5NMJxBYU3fcmc06Y4Map">视图</div>
+        <div class="navitem" data-page-node-id="86fRn1Y2PdMTBESReeaybM"><span data-page-node-id="ewaAFjhC1gDYgpjbZpjZ4v">看板 / 列表</span></div>
+        <div class="navitem" data-page-node-id="zO9c2dInYLDMnTCESQcvcw"><span data-page-node-id="lvU4E0z4dzEkT3mIuIHDfK">已存筛选</span></div>
+      </div>
+      <div class="maincol" data-page-node-id="WJJLrypU5Sv2eeWVAfVVCQ">
+        <div class="tbar" data-page-node-id="TpnwkEM3GmTnkmkW1i6AHQ">
+          <span style="font-size: 12px; color: var(--text-tertiary);" data-page-node-id="64cdUFspMcsoXtzm4n9Y5y">工作区 / 任务</span>
+          <div style="flex: 1;" data-page-node-id="i8zb8yERts6exLut4FaeOo"></div>
+          <span class="chip" style="font-size: 12px;" data-page-node-id="1biH23h5satc4T2mZlpkDA">搜索 <span class="kbd" data-page-node-id="mYFCeDDDEZOitmdynixeV5">⌘K</span></span>
+          <div style="width: 22px; height: 22px; border-radius: 50%; background: var(--brand-subtle); border: .5px solid var(--border-default);" data-page-node-id="8xKnEBQIYQLM7ybdtrI24r"></div>
+        </div>
+        <div class="vbar" data-page-node-id="TVG4HhDWz6uTyqHzuvMMJy">
+          <div class="seg" data-page-node-id="VAZh4FJvlM8LDu8UmEri2l"><span class="on" data-page-node-id="T6V3tZinNiVSaiBxoLfvPk">看板</span><span data-page-node-id="yxoMeEz7Of2M5AfR4zTRm6">列表</span></div>
+          <span class="chip" data-page-node-id="sgsMoMBF5eJH1z9HvDYv5S"><span class="dot" style="background: var(--status-progress)" data-page-node-id="jfTFFHZYsHT26kLKN31Buc"></span>进行中</span>
+          <div style="flex: 1;" data-page-node-id="24C881N6kW8fH7uoRtRXO0"></div>
+          <button class="b primary sm" type="button" data-page-node-id="ZR6GjQeVUWjTkAkKp9NQvh">新建</button>
+        </div>
+        <div class="cols" data-page-node-id="rabnVG10dhPpIAqqBVQoiQ">
+          <div class="col" data-page-node-id="vBfHB9b51OrBDCJWFzgHVD">
+            <div class="col-h" data-page-node-id="Qb8hwAoTOsWmiDBmfbKVW7"><span class="dot" style="background: var(--status-backlog)" data-page-node-id="DdpLN4cmLF941sQWJ7sgZh"></span>待办池<span class="n" data-page-node-id="8bGT2rr30w0CaY3cpsLupt">4</span></div>
+            <div class="icard" data-page-node-id="K392jkl2PTQ8sZ7hAV5ngJ"><div class="t" data-page-node-id="hYoKMM8xfsvIjA4faCqs1S">补齐 AI 输出的 Schema 校验</div><div class="m mono" data-page-node-id="vCPjkR9whavQrdbywLJqkZ">TF-142 · 2 天前</div></div>
+            <div class="icard" data-page-node-id="iCURXvf5pIe9nJ81xAsGyx"><div class="t" data-page-node-id="qMHcLGTGGsDfYyE0rLdGlF">E2E 用例覆盖拖拽失败</div><div class="m mono" data-page-node-id="lz345mEJGmALeYuUIxsiu4">TF-141</div></div>
+          </div>
+          <div class="col" data-page-node-id="8InTyzxowFXSmaQTAt8vOc">
+            <div class="col-h" data-page-node-id="QCYFY9eauf0DH9i7UEc5nv"><span class="dot" style="background: var(--status-todo)" data-page-node-id="jGetonYWKaemhjq5cncr9V"></span>待处理<span class="n" data-page-node-id="Xwy047uucOmg2XK6AZ8Hu5">3</span></div>
+            <div class="icard card-dragging" data-page-node-id="P550d77EFoD3P9RujGPuDB"><div class="t" data-page-node-id="cuWWZEiHlcXEinORfvEFsz">拖拽中：卡片抬起态</div><div class="m" data-page-node-id="Rx9nxJoQUCmkiqY0TC1rN6">elev-2 + 1.5° 倾斜</div></div>
+          </div>
+          <div class="col" data-page-node-id="whYPVFhRTFKpbY1xTANi0X">
+            <div class="col-h" data-page-node-id="gBFVb6aCzVtA4vppg95kLT"><span class="dot" style="background: var(--status-progress)" data-page-node-id="uccLcCCrhsHoQIepblA8mF"></span>进行中<span class="n" data-page-node-id="xJSA5RScrU7lxKrOlWhicP">5</span></div>
+            <div class="icard" data-page-node-id="whxJcARGkocnBgTaeSVvfl"><div class="t" data-page-node-id="u7gydlJgAHevw2EOfAFR05">设计令牌落地到 globals.css</div><div class="m mono" data-page-node-id="ZERsN5eCkB2w2j78JV3ThP">TF-138</div></div>
+            <div class="icard" data-page-node-id="C17IZUOBXVFRZyiLBWOoqz"><div class="t" data-page-node-id="3G29jT9X3N6UbtV6XUxtCx">抽屉打开时的焦点陷阱</div><div class="m mono" data-page-node-id="5R3AGW0uoH8kIj0fS2QUmN">TF-137</div></div>
+          </div>
+          <div class="col" data-page-node-id="v8s54qB1gHMRWr24qAP3BN">
+            <div class="col-h" data-page-node-id="mKs5eW3pogc2ukCjj6DJeY"><span class="dot" style="background: var(--status-done)" data-page-node-id="CxaeHj1MdDb9HCK9Wy8zsI"></span>已完成<span class="n" data-page-node-id="6rpxN8tbBHdvQUQ82wnIdD">9</span></div>
+            <div class="icard" data-page-node-id="BftMvv6sFtvOysHM3IYNVb"><div class="t" data-page-node-id="V5CZ7NAzRJeTxc0IZc3Vgq">四列看板骨架</div><div class="m mono" data-page-node-id="RB20fJCBXBjbWwJ9WiuNGV">TF-130</div></div>
+            <div class="dropzone" data-page-node-id="DoGR5hWbiVljTBE0nDmsM3">拖到这里</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note" data-page-node-id="xKvoaWt9hHCBl2eQSwrJNV">看板列各自独立纵向滚动，整页不滚动——否则拖拽到一半列头会滑出视口，用户会失去位置感。</div>
+  </section>
+
+  <section data-page-node-id="UsCoBy6IDJyAuKyehsfReU">
+    <div class="sec-head" data-page-node-id="vCsnyOFV59WPsiqXZMFxFl"><span class="sec-num" data-page-node-id="GSs1Fdi57XPi6gTXGoWb2r">05</span><h2 data-page-node-id="LdDELXybpAWtdcPg1GErin">关键组件</h2></div>
+    <p class="sec-desc" data-page-node-id="AuYZ0G8QR1ieNJYUBFDdXN">按钮与输入框已接入真实的悬停、聚焦与禁用状态，可以直接用键盘 Tab 试一下焦点环。</p>
+
+    <div class="card" data-page-node-id="DeEqCcFaZX6CAeqMKTwT1y">
+      <p class="card-label" data-page-node-id="fzJdhDj0DzoK83gDt1D5g9">按钮 · 变体与尺寸</p>
+      <div class="btnrow" style="margin-bottom: 14px;" data-page-node-id="cF7fws8SyxN3pszGO6BcVf">
+        <button class="b primary" type="button" data-page-node-id="fGZ3btuysTcZ7GvEyn6iqo">确认并创建全部</button>
+        <button class="b secondary" type="button" data-page-node-id="7aFZqvCFADCFRGTdjnZEzK">重新生成</button>
+        <button class="b ghost" type="button" data-page-node-id="osdtfgFLBbnA755OICoBav">取消</button>
+        <button class="b danger" type="button" data-page-node-id="2FOLAfX3iwiPeyKlD7BN8A">删除任务</button>
+      </div>
+      <div class="btnrow" style="margin-bottom: 14px;" data-page-node-id="bGf7kjiRX5lWCw2UgXmsiB">
+        <button class="b primary sm" type="button" data-page-node-id="QA77IucrYsJn3SQxx395KC">小尺寸 28px</button>
+        <button class="b secondary sm" type="button" data-page-node-id="AACCJfGHdWYDSPXZ0lwuhB">列表行内操作</button>
+        <button class="b secondary lg" type="button" data-page-node-id="eZlGthup2lOm2r30XIZcsQ">大尺寸 40px · 表单主操作</button>
+      </div>
+      <div class="btnrow" data-page-node-id="6vCQ7BFahCNWjpamBOb83s">
+        <button class="b primary" type="button" disabled data-page-node-id="mSAdgjDtjqxXIFj6fZLWEt">禁用态</button>
+        <span class="chip" data-page-node-id="jWUHRCsAsBHmnBeGRXFzys">提交中按钮宽度锁定，避免文案变化导致抖动</span>
+      </div>
+      <div class="note" data-page-node-id="GPnIsLFIF5XiyZJyiqmzMS"><strong data-page-node-id="qnUNwlaVKj5LOfKaijCHrq">破坏性操作不弹二次确认。</strong>删除任务直接执行并给出 5 秒撤销窗口，比拦截一次点击更高效。只有不可撤销的操作（如删除工作区）才使用确认弹窗。</div>
+    </div>
+
+    <div class="card" data-page-node-id="OZCfIx4AiwHQWYmwxk5XQ8">
+      <p class="card-label" data-page-node-id="gNL06wt3LOtH48xD4F0E1A">输入框 · 默认 / 聚焦 / 校验错误</p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;" data-page-node-id="Gdsizoz6oBUiYOA3VHrwHS">
+        <div data-page-node-id="FN1DoBtJcIrjJ0Vb7AunWX">
+          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 5px;" data-page-node-id="FGGWGng5C2J4pBwu6npghQ">任务标题</div>
+          <input class="tf" placeholder="用一句话描述要做什么" value="接入 downloadBill 接口" data-page-node-id="UkmBmV0TPtyMRB4V7FEPep">
+        </div>
+        <div data-page-node-id="dagVKJM480Ckn3XshFFHZf">
+          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 5px;" data-page-node-id="cnSbuxT2Pp1RoqcP8i6DNl">搜索</div>
+          <input class="tf" placeholder="搜索任务…" data-page-node-id="OZma0cp3izeXqbJppCGvME">
+        </div>
+        <div data-page-node-id="7jBXOfO8SmtI6FF2LtBANF">
+          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 5px;" data-page-node-id="pRNZeRNQWFa3P9yx2X8kAJ">校验错误</div>
+          <input class="tf" value="" placeholder="标题不能为空" style="border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);" data-page-node-id="jZRoVWTIDNpX97eTMyp6R3">
+          <div style="font-size: 12px; color: var(--danger); margin-top: 5px;" data-page-node-id="xOyAwG14hqW6AaD3HosaGY">请输入任务标题（1–200 字符）</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-page-node-id="mDkJSNEgX29rlBSHoF1D7B">
+      <p class="card-label" data-page-node-id="Ymv2YABoW3jHEYtKvLbPo5">状态与快捷键</p>
+      <div class="btnrow" style="margin-bottom: 12px;" data-page-node-id="SVqO9XyODqIjDGHSgW34E4">
+        <span class="chip" data-page-node-id="i7NLCssUHCPo2R9s3FlFPo"><span class="dot" style="background: var(--status-backlog)" data-page-node-id="xC1iExE2vw9nbFHThMouB5"></span>待办池</span>
+        <span class="chip" data-page-node-id="gtWCTgFYexj9dI7rsYGaZc"><span class="dot" style="background: var(--status-todo)" data-page-node-id="SWSTYehFvGOMlUMQ7rVn7J"></span>待处理</span>
+        <span class="chip" data-page-node-id="sW7ERBLLWU57mdi0NORAUM"><span class="dot" style="background: var(--status-progress)" data-page-node-id="fNNhUx67owNsIbruOJQESl"></span>进行中</span>
+        <span class="chip" data-page-node-id="ki8Jy7lDEnPxd1M6BFrEJu"><span class="dot" style="background: var(--status-done)" data-page-node-id="M01qheCJ4ysX1An5AzNwZq"></span>已完成</span>
+      </div>
+      <div class="btnrow" data-page-node-id="UohHGeiGskabU0QZK51ETv">
+        <span class="kbd" data-page-node-id="XbDpbsqpNECFcDkwHceZqz">⌘K</span><span style="font-size: 12px; color: var(--text-secondary);" data-page-node-id="o6NIuLVYlbHNRU4xXgc7zA">命令面板</span>
+        <span class="kbd" data-page-node-id="WaEWu0fWfDy86LGSstyjFJ">N</span><span style="font-size: 12px; color: var(--text-secondary);" data-page-node-id="eZi9iUIaTGnOrUP5u4U8ha">新建任务</span>
+        <span class="kbd" data-page-node-id="cA4CA6y3Uj0GfhxqHCOyby">/</span><span style="font-size: 12px; color: var(--text-secondary);" data-page-node-id="NUQfocwCZmwn8uWX8QHEcU">搜索</span>
+        <span class="kbd" data-page-node-id="etJP1RAMxHFnJg7lB2H9TU">⌘↑</span><span style="font-size: 12px; color: var(--text-secondary);" data-page-node-id="v9RrukeMSg5J0Rq12GjTJw">卡片移到上一列</span>
+        <span class="kbd" data-page-node-id="rVYcYbwf69gzUrQnHG8tbO">Esc</span><span style="font-size: 12px; color: var(--text-secondary);" data-page-node-id="6zYJ7tukNmxG4gwjG2GCBA">关闭当前层</span>
+      </div>
+      <div class="note" data-page-node-id="fTacbJQWJi6o63V8YyajD8"><strong data-page-node-id="IYoqGE8BW38bTe5i6XCWpB">颜色永不作为唯一信息载体。</strong>状态点始终与状态文字并列出现；优先级同时带颜色与图标。色盲用户仅凭文字也能正确解读全部信息。</div>
+    </div>
+  </section>
+
+  <section data-page-node-id="EmIsSBnOe358kiEipZ8UDd">
+    <div class="sec-head" data-page-node-id="4hbBKKdJ80HRyv724QCKGE"><span class="sec-num" data-page-node-id="CDY6LD8ILazbbMThCjWGdG">06</span><h2 data-page-node-id="WPGHout7yX08gAvz6FjDdt">模块优先级</h2></div>
+    <p class="sec-desc" data-page-node-id="8hbjRAvePWy8vAFen3gL5e">优先级依据 <span class="mono" data-page-node-id="B3SKfPMLnTKagSgmccLCaK">mvp-scope.md</span> 的范围定义，并补充了从设计工作量出发的判断。</p>
+    <div class="card" data-page-node-id="yveDQC4BDDsjgXAzMZy4QR">
+      <table class="spec" data-page-node-id="RCLZvx1ddb9zyEMeZna1d2">
+        <thead data-page-node-id="6UPpPH4KLThM2qBCuhluFi"><tr data-page-node-id="dH4xCzxOScE3ecLjBJK3S0"><th data-page-node-id="WDQknPdjki7ZPdAyqGlh1n">模块</th><th data-page-node-id="wCllr2GulzGUz6Z6GzkBxs">用途</th><th data-page-node-id="sZNEU9Hpy5wJSCPVjRsLv8">载体</th><th data-page-node-id="v254jqiNpF1Z51XonMk4tK">优先级</th></tr></thead>
+        <tbody data-page-node-id="jIHPZLGIkDMwEA8dKBniMT">
+          <tr data-page-node-id="htZnT9f98AIwjY42TOMtus"><td data-page-node-id="SQtGK37s2JcUhIWbOJXinD">应用外壳</td><td data-page-node-id="64kChllgAwno8MkMxuV5hk">侧边栏与顶栏，所有业务页面的共同骨架</td><td data-page-node-id="qHcfvRVZIQHAreHTkKcEFs">全局</td><td data-page-node-id="SUcoxZBObcsM7W7IxXkH2P"><span class="chip on" style="border-color:transparent; background: var(--brand-subtle); color: var(--brand-text);" data-page-node-id="XUOZr6rGO07sMvj5ORRqhH">P0</span></td></tr>
+          <tr data-page-node-id="7wEYTDkRUqhgbYqAKLKsKC"><td data-page-node-id="S9P4I6DT4l1ytijCw9c9We">看板与拖拽</td><td data-page-node-id="hDewzhFB4Wg6nOj7rtXG3G">按状态分列掌控全局，拖拽改状态并持久化</td><td data-page-node-id="hdFcZ4B0bVL1N5dXFVUCfB">/issues?view=board</td><td data-page-node-id="YLybi2tcTUmTXsYV3ahV1p"><span class="chip on" style="border-color:transparent; background: var(--brand-subtle); color: var(--brand-text);" data-page-node-id="k804zoHFA9jhoxKDKiJNUT">P0</span></td></tr>
+          <tr data-page-node-id="Z9quYofa9WdNukOX9xErF8"><td data-page-node-id="QIRmT4YxiT7j72ZLYkHjaN">列表视图</td><td data-page-node-id="70G5ib8sRviy2nmsnw30Qd">高密度扫读，快速定位与编辑</td><td data-page-node-id="1fiQ77780AKCXzfJhQOxO5">/issues?view=list</td><td data-page-node-id="SfgkZ2ngNUQuxE1x8U9Vqu"><span class="chip on" style="border-color:transparent; background: var(--brand-subtle); color: var(--brand-text);" data-page-node-id="YD5Wk0PvRER3Kc049FZy8x">P0</span></td></tr>
+          <tr data-page-node-id="CaDH51KQVtg2Vco5SGyNOS"><td data-page-node-id="hGBvZlIjRcOQTtNUAchyU4">任务创建与编辑</td><td data-page-node-id="sjg5A5dNLZcqlUNNXz3zcx">标题必填、描述可选，支持修改与删除</td><td data-page-node-id="OsSbiIC8zoZTDrrTDSRgd6">抽屉</td><td data-page-node-id="Ti3Aefw9TZ3qXj6ht1Yk6B"><span class="chip on" style="border-color:transparent; background: var(--brand-subtle); color: var(--brand-text);" data-page-node-id="if6zJ4aCphEf4oLigHClCX">P0</span></td></tr>
+          <tr data-page-node-id="jY8YiGcG9f4uQoQsKhLuFj"><td data-page-node-id="fJbLF64lFLTl4fgsoO2hhV">AI 拆解闭环</td><td data-page-node-id="vDqPIrzQt6BcDZRw2iDFYv">自然语言生成结构化子任务，确认后批量创建</td><td data-page-node-id="AEvGbls7BQpTZTdLG7WR6Z">/ai</td><td data-page-node-id="sCOCOESDUXmx9JET48YihF"><span class="chip on" style="border-color:transparent; background: var(--brand-subtle); color: var(--brand-text);" data-page-node-id="DmEvcBeQiD9ev30TWOxjve">P0</span></td></tr>
+          <tr data-page-node-id="LG2XLjDqpgAwm0eAc5DapY"><td data-page-node-id="a9goGZxR8pp23G5eLEJOjS">五态处理</td><td data-page-node-id="Jsk9rOtLHj96lGOO0XEDUJ">加载 / 空 / 错误 / 成功 / 重试全覆盖</td><td data-page-node-id="y8Trgs2NZ9r29PS9LTOP6d">全局</td><td data-page-node-id="6pQMwmMA4TJfZUJMWCHH9w"><span class="chip on" style="border-color:transparent; background: var(--brand-subtle); color: var(--brand-text);" data-page-node-id="KgqJgY1FuUSm3QKNqPkkaV">P0</span></td></tr>
+          <tr data-page-node-id="7ASwDMEsXDE1z5SRb8U5hl"><td data-page-node-id="tWXAaSLH41FHRPLoDW8Tl4">可访问性达标</td><td data-page-node-id="Bz6tfDF4fS7pmLcTVhGK7h">键盘全覆盖、对比度、语义结构</td><td data-page-node-id="vH9smeP0fyeFmaQ2RKjhQr">全局</td><td data-page-node-id="FvbxSI5BW8pU8HvZiN0sH3"><span class="chip on" style="border-color:transparent; background: var(--brand-subtle); color: var(--brand-text);" data-page-node-id="UbhvG7F19D5h3WnLW6Cnnw">P0</span></td></tr>
+          <tr data-page-node-id="BrIzP3gQGTDBr8KFBZ01uD"><td data-page-node-id="CXGSCjxWGlHl2dy7sfH5fJ">命令面板</td><td data-page-node-id="q8AKBaIeU2LDKjMqdf284u">键盘用户的统一入口，聚合导航与动作</td><td data-page-node-id="38kS3uCIJvvGgctKbd4XEm">全局浮层</td><td data-page-node-id="MneLVjwu4JhpoBmjYGgHfR"><span class="chip" data-page-node-id="Oz0VPEaWpVPzLUNBOjYQcu">P1</span></td></tr>
+          <tr data-page-node-id="3BEdOobz1W7e25TvW9D4RY"><td data-page-node-id="3UAyv0zKxvJjjj6cysD927">概览仪表盘</td><td data-page-node-id="b09GX5Fyn03INAWQjHTwpA">登录后落地页，一眼看清今日全局</td><td data-page-node-id="IJWSdMQqwunL8U8orzdqTB">/overview</td><td data-page-node-id="2ovkDyuHTXizFGfHgoXoN9"><span class="chip" data-page-node-id="9DvvQ64yS9UsR8CeEI1ivl">P1</span></td></tr>
+          <tr data-page-node-id="3XOthgow0EA1itb1g9KRaU"><td data-page-node-id="nZLN4ZKXwFgjlIVqp6zBaB">搜索与筛选</td><td data-page-node-id="soYW8PHDSdE0CSZMsna0Au">按文本、状态、优先级过滤任务</td><td data-page-node-id="QBezucw7XHWuGCgKhp373V">工具栏</td><td data-page-node-id="ygShCfqjGXfKc539eoYmZL"><span class="chip" data-page-node-id="MBy0vAWEHu6WA57DQ9adHh">P1</span></td></tr>
+          <tr data-page-node-id="sEnaOEbrKAwFFwhuv3DvHZ"><td data-page-node-id="gXSYZr8lLE1tSyHR260dkZ">响应式适配</td><td data-page-node-id="8WIzkHVDy5pzE5BhyDCcwP">平板与移动端可用，移动端无拖拽</td><td data-page-node-id="srAXRhhFAg7Z1ZTDvZ7pAo">全局</td><td data-page-node-id="7pEkcab96I3az2DrqNE2vr"><span class="chip" data-page-node-id="HJseE8PRkAv1ktS8NGgAGK">P1</span></td></tr>
+          <tr data-page-node-id="D4wGCC1BLcY80UlmduMvU7"><td data-page-node-id="YLbDTuGdvUnfbvbU8VfKJI">深浅主题</td><td data-page-node-id="KKrKve1Iko2daFZIcgF3LF">令牌已预留，实现成本低</td><td data-page-node-id="Gku9heZN60SNOggFUM7BtZ">/settings</td><td data-page-node-id="mBkuWkzndzBueHTbsACz8y"><span class="chip" data-page-node-id="GmaOUbBncuJmDrZVwz5NjM">P1</span></td></tr>
+          <tr data-page-node-id="ZUdIxojgzyCEsViFWM0jHV"><td data-page-node-id="2D2RqzZOvGtrJUbtbNCOZi">标签</td><td data-page-node-id="oKfoqe5oJitZvNwkhK0g42">自定义分类维度</td><td data-page-node-id="YCPr8KXK51WS5E1kijsjXw">表单与卡片</td><td data-page-node-id="lSX4rHDZqKNZyrh41Nyyq8"><span class="chip" data-page-node-id="g98naWC2vbNlOg8BQZ0cC3">P2</span></td></tr>
+          <tr data-page-node-id="W1eu0wideUFvNwPxHhZU0W"><td data-page-node-id="vofe44DOVIUZuwJ2pHAEnX">批量选择</td><td data-page-node-id="RGQYvO15yUx8kSki6Z0rwV">多选后批量改状态或删除</td><td data-page-node-id="cBL6QkqTyy1LUXF7ahx0za">列表</td><td data-page-node-id="C5o4YWj3sFiorSyuoJ33fG"><span class="chip" data-page-node-id="FIUUyF3RpbZmV4wtyl8eS4">P2</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section data-page-node-id="2NFiXNFDLQVSrJ8LNIiavC">
+    <div class="sec-head" data-page-node-id="D3YHE3qRQtGXng1touHjei"><span class="sec-num" data-page-node-id="wAbd0CTxh7aAPwti4wc5xr">07</span><h2 data-page-node-id="c1SLICunzCw2YF8hrqO48m">导航与操作路径</h2></div>
+    <p class="sec-desc" data-page-node-id="lqKgoqeWgYFXBEVU7rKu1e">三层导航模型：全局层（侧边栏 + 命令面板）、上下文层（视图切换与筛选）、对象层（详情抽屉）。全部视图状态写入 URL，保证可分享、可后退、可刷新还原。</p>
+    <div class="card" data-page-node-id="ABqA3cztxZqRCVlDgx81Ai">
+      <table class="spec" data-page-node-id="2CBpAjdkzjCguBC9lUKBC4">
+        <thead data-page-node-id="bc3Q5DXFzEbacW80YQSh2r"><tr data-page-node-id="yqbeEHFCNFPzaIJfqCzKKR"><th data-page-node-id="vvEsI0znKnPnrjAdRTXjdp">按键</th><th data-page-node-id="qcc30E4N2sl3CUzGtgkdhR">动作</th><th data-page-node-id="bvzjOj4piwknGGM4GGbvRw">生效范围</th></tr></thead>
+        <tbody data-page-node-id="RwPexcj2BfpdgmnXVF8CTD">
+          <tr data-page-node-id="bIbmA5QTrr0D0QimGKqcu9"><td class="mono" data-page-node-id="qbq3BocULzAJMzffpIv83h">⌘K / Ctrl+K</td><td data-page-node-id="Gmt4b7R0lVc5aakt61egKX">打开命令面板</td><td data-page-node-id="oCwXmRfptn1dkuQ7yPBxk4">全局</td></tr>
+          <tr data-page-node-id="YIJFNrai4GRoTIbX7Lwjze"><td class="mono" data-page-node-id="pCnxElE6FsdY86akKKToAo">N / C</td><td data-page-node-id="w71SjcsN83Lm2QIG6LBDKb">新建任务，抽屉自动聚焦标题</td><td data-page-node-id="jRHELN0bVx2NAIAVjCXUp8">全局（非输入态）</td></tr>
+          <tr data-page-node-id="nL1InG3lqPxx6a7udsFuDc"><td class="mono" data-page-node-id="hlFmam7X3nFRldIfoTCdi6">/</td><td data-page-node-id="HlXh4zJfgoZzcPlYdN3A0b">聚焦搜索框</td><td data-page-node-id="oBaAyuXbd4z0wJx9naQ22m">列表 / 看板</td></tr>
+          <tr data-page-node-id="ui87wNWxLCgmW2Qe0zwd64"><td class="mono" data-page-node-id="1qpdjlglv5QyJVT0aH1LqD">G → O / I / S</td><td data-page-node-id="eKgpSfVTjEFhxDJNiY8rX4">跳转 概览 / 任务 / 设置（序列键）</td><td data-page-node-id="3tAn2oHdIBsiJGD2bFc432">全局</td></tr>
+          <tr data-page-node-id="igZYPi0SgSEgX0dZOQZZxm"><td class="mono" data-page-node-id="UDclyyOtFeR5ayCJnAo1t5">B / L</td><td data-page-node-id="vVKSnEwJU38Q9gEpJTwEwi">切换看板 / 列表视图</td><td data-page-node-id="7jrP9l71rse0ENAa1pIxeZ">任务页</td></tr>
+          <tr data-page-node-id="q42oGmRQrJHWKrm8GD0O4k"><td class="mono" data-page-node-id="nKsKH0vlm6R4s08EfFbp3Q">⌘↑ / ⌘↓</td><td data-page-node-id="2XsBoGDlfUEfRGghDRVT2i">卡片移动到上一列 / 下一列</td><td data-page-node-id="mftffIxEAnr6ad5ml18HmI">看板（卡片聚焦时）</td></tr>
+          <tr data-page-node-id="UYvyIqJao0yysh5p52whXe"><td class="mono" data-page-node-id="Hf3YxxHN5AhbbIGeD6RjQK">⌘Enter</td><td data-page-node-id="yW9Omw1b9RzCfBBkDaoSeg">提交表单 / 确认创建</td><td data-page-node-id="XFDkEAgBCHdEZqxCzVkDw0">抽屉、弹窗</td></tr>
+          <tr data-page-node-id="fqoqbNLt9QhaiS0nAmElk4"><td class="mono" data-page-node-id="l1QFLqZ5Fv2jHddJIYaVAx">Esc</td><td data-page-node-id="fePGGHecFQZEsQBlj5d32G">关闭当前层：抽屉 → 弹窗 → 清空搜索</td><td data-page-node-id="BgflsBS0gvDxk93B8lMTE8">全局</td></tr>
+        </tbody>
+      </table>
+      <div class="note warn" data-page-node-id="r6BcIsyvEZZqifdZHvoGPr">输入框聚焦时禁用除 <span class="mono" data-page-node-id="4ZTDnovARlJLiLM5kJhnrz">Esc</span> 与 <span class="mono" data-page-node-id="adwFdvoLDV6oYvetYN46Pw">⌘Enter</span> 外的所有单键快捷键，避免打字触发跳转。移动端无拖拽，改为长按卡片弹出状态选择面板。</div>
+    </div>
+  </section>
+
+  <footer data-page-node-id="GhNw57zZ4TMAqXQtAu66N0">
+    TaskFlow 用户界面设计方案 v2.0 · 代号「静默」· 完整规格见 <span class="mono" data-page-node-id="Wrqcs8waXs1k2CuC5SiXUO">ui-design-system-v2.md</span><br data-page-node-id="lbjAjaQuNOZ5umQa380QzZ">
+    适配平台：桌面端 Web 优先（基准 1440×900）· 平板 768–1023 · 移动端 Web 360–767 · 不做原生 App
+  </footer>
+
+</main>
+
+<script>
+  var btn = document.getElementById('themeBtn');
+  var root = document.documentElement;
+  function label() {
+    btn.textContent = root.getAttribute('data-theme') === 'dark' ? '切换为浅色' : '切换为深色';
+  }
+  function paintHex() {
+    var mode = root.getAttribute('data-theme');
+    document.querySelectorAll('[data-hx]').forEach(function (el) {
+      var raw = el.getAttribute('data-hx');
+      var parts = raw.split(' / ');
+      var pick = mode === 'dark' ? parts[0] : parts[1];
+      el.textContent = pick.replace(/^(dark|light):/, '');
+    });
+  }
+  btn.addEventListener('click', function () {
+    root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    label(); paintHex();
+  });
+  label(); paintHex();
+</script>
+
+</body>
+</html>
+

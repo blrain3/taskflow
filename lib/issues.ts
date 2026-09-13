@@ -91,14 +91,30 @@ export type CreateIssueParams = {
   description?: string | null;
 };
 
+/** 看板列内排序步长；为未来的无拖拽插入留中缝（AI 批量创建 lib/issue-batch.ts 使用同一常量） */
+export const ISSUE_POSITION_STEP = 100;
+
 export async function createIssue(params: CreateIssueParams): Promise<IssueItem> {
-  const row = await getPrisma().issue.create({
+  const db = getPrisma();
+
+  // 新任务统一追加到 BACKLOG 列尾（与 AI 批量创建同一规则）：
+  // position 接在本列已有最大值之后，而不是依赖默认 0 造成所有手动任务永久并列。
+  // max 与 create 之间存在并发窗口，窗口内的同位次并列由 createdAt desc 兜底。
+  const columnMax = await db.issue.aggregate({
+    _max: { position: true },
+    where: { workspaceId: params.workspaceId, status: "BACKLOG" },
+  });
+  const position =
+    columnMax._max.position === null ? 0 : columnMax._max.position + ISSUE_POSITION_STEP;
+
+  const row = await db.issue.create({
     data: {
       workspaceId: params.workspaceId,
       title: params.title,
       description: params.description ?? null,
       // 新建任务统一落到 BACKLOG，与 architecture §8.2 一致
       status: "BACKLOG",
+      position,
     },
     select: ISSUE_SELECT,
   });
