@@ -11,6 +11,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// 文档状态（ADR-007 第一阶段：单人写作 MVP，删除为软删除并归档）
+enum DocumentStatus {
+  DRAFT
+  ARCHIVED
+}
+
+/// 正文格式：第一阶段只产出 MARKDOWN，RICH_TEXT 为第二阶段预留
+enum DocumentContentFormat {
+  MARKDOWN
+  RICH_TEXT
+}
+
 /// Issue 状态：BACKLOG → TODO → IN_PROGRESS → DONE
 enum IssueStatus {
   BACKLOG
@@ -30,10 +42,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts        Account[]
-  sessions        Session[]
-  memberships     WorkspaceMember[]
-  ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
+  accounts          Account[]
+  sessions          Session[]
+  memberships       WorkspaceMember[]
+  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
+  authoredDocuments Document[]        @relation("DocumentAuthor")
+  documentVersions  DocumentVersion[] @relation("DocumentVersionCreator")
 }
 
 /// Auth.js 账号绑定表
@@ -78,9 +92,10 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members WorkspaceMember[]
-  issues  Issue[]
+  owner     User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   WorkspaceMember[]
+  issues    Issue[]
+  documents Document[]
 
   @@index([ownerId])
 }
@@ -118,4 +133,45 @@ model Issue {
   @@index([workspaceId, status, position])
   /// 列表视图按创建时间排序
   @@index([workspaceId, createdAt])
+}
+
+/// 第一阶段不支持用户删除；作者关系使用 Restrict 保护历史归属。
+model Document {
+  id             String                @id @default(cuid())
+  workspaceId    String
+  authorId       String
+  title          String                @db.VarChar(200)
+  content        String                @db.Text
+  summary        String?               @db.Text
+  format         DocumentContentFormat @default(MARKDOWN)
+  status         DocumentStatus        @default(DRAFT)
+  contentVersion Int                   @default(1)
+  deletedAt      DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    User              @relation("DocumentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  versions  DocumentVersion[]
+
+  @@index([workspaceId, updatedAt, id])
+  @@index([authorId, updatedAt])
+  @@index([workspaceId, status, updatedAt])
+}
+
+model DocumentVersion {
+  id          String                @id @default(cuid())
+  documentId  String
+  version     Int
+  title       String                @db.VarChar(200)
+  content     String                @db.Text
+  summary     String?               @db.Text
+  format      DocumentContentFormat
+  createdById String
+  createdAt   DateTime              @default(now())
+
+  document  Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("DocumentVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, version])
 }
