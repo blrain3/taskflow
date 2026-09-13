@@ -66,7 +66,9 @@ export const documentTitleSchema = z
 
 export const documentContentSchema = z
   .string()
-  .max(DOCUMENT_CONTENT_MAX_LENGTH, { error: `正文不能超过 ${DOCUMENT_CONTENT_MAX_LENGTH} 个字符` });
+  .max(DOCUMENT_CONTENT_MAX_LENGTH, {
+    error: `正文不能超过 ${DOCUMENT_CONTENT_MAX_LENGTH} 个字符`,
+  });
 
 export const documentSummarySchema = z
   .string()
@@ -253,4 +255,3 @@ export function fieldErrorsOf(error: z.ZodError): Record<string, string> {
   }
   return fields;
 }
-
