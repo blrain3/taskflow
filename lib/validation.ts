@@ -64,11 +64,9 @@ export const documentTitleSchema = z
   .min(1, { error: "请输入文档标题" })
   .max(DOCUMENT_TITLE_MAX_LENGTH, { error: `标题不能超过 ${DOCUMENT_TITLE_MAX_LENGTH} 个字符` });
 
-export const documentContentSchema = z
-  .string()
-  .max(DOCUMENT_CONTENT_MAX_LENGTH, {
-    error: `正文不能超过 ${DOCUMENT_CONTENT_MAX_LENGTH} 个字符`,
-  });
+export const documentContentSchema = z.string().max(DOCUMENT_CONTENT_MAX_LENGTH, {
+  error: `正文不能超过 ${DOCUMENT_CONTENT_MAX_LENGTH} 个字符`,
+});
 
 export const documentSummarySchema = z
   .string()

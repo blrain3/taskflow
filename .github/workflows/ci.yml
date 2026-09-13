@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   quality:
-    name: lint / format / build
+    name: lint / format / docs / build / test
     runs-on: ubuntu-latest
 
     # 这些值仅用于让构建期能完成环境校验，不具备任何真实权限。
@@ -43,6 +43,11 @@ jobs:
       - name: Validate Prisma schema
         run: npx prisma validate
 
+      # 文档质量门禁第 1 条（相对链接必须存在）此前只写在 docs/README.md 里，无人执行；
+      # 文档目录重组后根 README 曾残留 9 条失效链接。这里把它变成可执行检查。
+      - name: Docs links
+        run: npm run docs:check
+
       - name: Prettier
         run: npx prettier --check .
 
@@ -55,6 +60,4 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # Sprint 1 起追加：
-      #   - name: Unit tests    run: npm run test
-      #   - name: E2E tests     run: npm run test:e2e
+      # 待办：E2E 用例扩充到覆盖看板拖拽与 AI 确认链路后，追加 `npm run test:e2e` 门禁。
