@@ -1,7 +1,7 @@
 jest.mock("@/lib/prisma", () => ({ getPrisma: jest.fn() }));
 
 import { getPrisma } from "@/lib/prisma";
-import { restoreDocumentVersion, saveDocument } from "@/lib/documents";
+import { deleteDocument, restoreDocumentVersion, saveDocument } from "@/lib/documents";
 
 function transactionDb(tx: Record<string, unknown>) {
   return { $transaction: jest.fn(async (callback: (value: unknown) => unknown) => callback(tx)) };
@@ -156,5 +156,31 @@ describe("document persistence", () => {
         data: expect.objectContaining({ version: 4, content: "旧正文" }),
       })
     );
+  });
+
+  test("soft delete archives the document instead of removing the row", async () => {
+    // 列表之所以能「删除后立刻消失」，依据是 deletedAt 被置位 + 列表查询过滤 deletedAt: null；
+    // 行与版本历史必须保留，否则历史版本恢复会失去依据。
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    (getPrisma as jest.Mock).mockReturnValue({ document: { updateMany } });
+
+    await deleteDocument({ id: "doc_1", workspaceId: "ws_1" });
+
+    const args = updateMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    };
+    expect(args.where).toEqual({ id: "doc_1", workspaceId: "ws_1", deletedAt: null });
+    expect(args.data.status).toBe("ARCHIVED");
+    expect(args.data.deletedAt).toBeInstanceOf(Date);
+  });
+
+  test("soft delete reports NOT_FOUND when nothing matched", async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    (getPrisma as jest.Mock).mockReturnValue({ document: { updateMany } });
+
+    await expect(deleteDocument({ id: "doc_1", workspaceId: "ws_1" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
   });
 });

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { CreateDocumentForm } from "@/components/document/CreateDocumentForm";
+import { DeleteDocumentForm } from "@/components/document/DeleteDocumentForm";
 import { listDocuments } from "@/lib/documents";
 import { requireWorkspaceContext } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
@@ -44,28 +45,34 @@ export default async function DocumentsPage() {
         ) : (
           <ul className="divide-y divide-line rounded-lg border border-line">
             {documents.map((item) => (
-              <li key={item.id}>
-                <Link
-                  href={`/documents/${item.id}`}
-                  className="block p-4 transition-colors hover:bg-hover"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="flex items-center gap-2">
-                      <span className="font-medium text-fg">{item.title}</span>
-                      {item.status === "DRAFT" ? null : (
-                        <span className="rounded-full bg-hover px-2 py-0.5 text-xs text-fg-muted">
-                          {DOCUMENT_STATUS_LABELS[item.status]}
-                        </span>
-                      )}
-                    </span>
-                    <time className="shrink-0 text-xs text-fg-muted" dateTime={item.updatedAt}>
-                      {formatDateTime(item.updatedAt)}
-                    </time>
+              // 删除控件与标题链接是兄弟节点而不是嵌套：交互元素不能嵌套在 <a> 里，
+              // 否则既非法，点击删除也会先触发一次跳转。
+              <li key={item.id} className="flex items-start justify-between gap-4 p-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/documents/${item.id}`}
+                      className="font-medium text-fg hover:underline"
+                    >
+                      {item.title}
+                    </Link>
+                    {item.status === "DRAFT" ? null : (
+                      <span className="rounded-full bg-hover px-2 py-0.5 text-xs text-fg-muted">
+                        {DOCUMENT_STATUS_LABELS[item.status]}
+                      </span>
+                    )}
                   </div>
                   {item.summary ? (
                     <p className="mt-1 truncate text-sm text-fg-muted">{item.summary}</p>
                   ) : null}
-                </Link>
+                </div>
+
+                <div className="flex shrink-0 items-start gap-3">
+                  <time className="pt-0.5 text-xs text-fg-muted" dateTime={item.updatedAt}>
+                    {formatDateTime(item.updatedAt)}
+                  </time>
+                  <DeleteDocumentForm documentId={item.id} title={item.title} />
+                </div>
               </li>
             ))}
           </ul>
