@@ -178,11 +178,3 @@ export async function restoreDocumentVersionAction(
     return failure(toActionError(error));
   }
 }
-
-/**
- * 渐进增强用的无状态包装：让「恢复」在没有 JS 时也能提交。
- * 状态化版本（restoreDocumentVersionAction）供带反馈的客户端表单使用。
- */
-export async function restoreDocumentVersionFormAction(formData: FormData): Promise<void> {
-  await restoreDocumentVersionAction(null, formData);
-}

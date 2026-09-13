@@ -21,5 +21,13 @@ export default auth((request) => {
 });
 
 export const config = {
-  matcher: ["/issues/:path*", "/overview/:path*", "/settings/:path*"],
+  /**
+   * matcher 只列受保护的业务区：公开页（登录/注册/落地页）、API（含 /api/auth、/api/health）
+   * 与静态资源都不经过本文件。
+   *
+   * **新增受保护路由时必须同步登记到这里**——否则保护会静默退化成「每个页面自己记得加校验」，
+   * 而把这件事变成框架层保证正是本文件存在的意义（新增 /documents 时就漏过一次）。
+   * /overview 与 /settings 目前尚无对应页面，提前登记不影响现有路由。
+   */
+  matcher: ["/issues/:path*", "/documents/:path*", "/overview/:path*", "/settings/:path*"],
 };

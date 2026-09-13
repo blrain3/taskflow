@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { logout } from "@/actions/auth";
+import { AppNav } from "@/components/app-nav";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { requireWorkspaceContext } from "@/lib/permissions";
 
@@ -18,10 +19,13 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-line px-6 py-3">
-        <div className="flex items-baseline gap-3">
-          <span className="text-sm font-semibold tracking-tight">TaskFlow</span>
-          <span className="text-sm text-fg-muted">{workspace.name}</span>
+      <header className="flex items-center justify-between gap-4 border-b border-line px-6 py-3">
+        <div className="flex items-center gap-4">
+          <div className="flex items-baseline gap-3">
+            <span className="text-sm font-semibold tracking-tight">TaskFlow</span>
+            <span className="text-sm text-fg-muted">{workspace.name}</span>
+          </div>
+          <AppNav />
         </div>
 
         <div className="flex items-center gap-3">
