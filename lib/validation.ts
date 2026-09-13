@@ -52,6 +52,59 @@ export const workspaceNameSchema = z
   .min(1, { error: "请输入工作区名称" })
   .max(WORKSPACE_NAME_MAX_LENGTH, { error: `名称不能超过 ${WORKSPACE_NAME_MAX_LENGTH} 个字符` });
 
+// ---- Document ----
+
+export const DOCUMENT_TITLE_MAX_LENGTH = 200;
+export const DOCUMENT_CONTENT_MAX_LENGTH = 200_000;
+export const DOCUMENT_SUMMARY_MAX_LENGTH = 2_000;
+
+export const documentTitleSchema = z
+  .string()
+  .trim()
+  .min(1, { error: "请输入文档标题" })
+  .max(DOCUMENT_TITLE_MAX_LENGTH, { error: `标题不能超过 ${DOCUMENT_TITLE_MAX_LENGTH} 个字符` });
+
+export const documentContentSchema = z
+  .string()
+  .max(DOCUMENT_CONTENT_MAX_LENGTH, { error: `正文不能超过 ${DOCUMENT_CONTENT_MAX_LENGTH} 个字符` });
+
+export const documentSummarySchema = z
+  .string()
+  .trim()
+  .max(DOCUMENT_SUMMARY_MAX_LENGTH, { error: `摘要不能超过 ${DOCUMENT_SUMMARY_MAX_LENGTH} 个字符` })
+  .transform((value) => (value.length === 0 ? null : value))
+  .nullable();
+
+export const documentFormatSchema = z.enum(["MARKDOWN", "RICH_TEXT"], {
+  error: "文档格式不合法",
+});
+
+/**
+ * 新建文档入参。**刻意不接收 workspaceId**——工作区一律由服务端从会话推导
+ * （见 lib/permissions.ts「绝不信任客户端传入的值」），客户端传什么都不参与写入。
+ */
+export const createDocumentSchema = z.object({
+  title: documentTitleSchema,
+  content: documentContentSchema.default(""),
+  summary: documentSummarySchema.optional(),
+  format: documentFormatSchema.default("MARKDOWN"),
+});
+
+export const saveDocumentSchema = z.object({
+  id: z.string().trim().min(1, { error: "缺少文档 ID" }),
+  title: documentTitleSchema,
+  content: documentContentSchema,
+  summary: documentSummarySchema.optional(),
+  format: documentFormatSchema,
+  baseVersion: z.number().int().min(1, { error: "文档版本不合法" }),
+});
+
+export const restoreDocumentVersionSchema = z.object({
+  documentId: z.string().trim().min(1, { error: "缺少文档 ID" }),
+  version: z.number().int().min(1, { error: "版本号不合法" }),
+  baseVersion: z.number().int().min(1, { error: "文档版本不合法" }),
+});
+
 // ---- Issue ----
 
 export const ISSUE_TITLE_MAX_LENGTH = 200;
@@ -174,6 +227,10 @@ export const aiBreakdownRequestSchema = z.object({
     .max(PROMPT_MAX_LENGTH, { error: "描述不能超过 4000 个字符" }),
 });
 
+export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
+export type SaveDocumentInput = z.infer<typeof saveDocumentSchema>;
+export type RestoreDocumentVersionInput = z.infer<typeof restoreDocumentVersionSchema>;
+
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;
 export type DeleteIssueInput = z.infer<typeof deleteIssueSchema>;
@@ -196,3 +253,4 @@ export function fieldErrorsOf(error: z.ZodError): Record<string, string> {
   }
   return fields;
 }
+
