@@ -54,6 +54,65 @@ describe("document persistence", () => {
     expect(tx.documentVersion.create).not.toHaveBeenCalled();
   });
 
+  test("scopes the conditional update to the document's own workspace", async () => {
+    // 授权判定与写入范围必须同源：Action 传进来的 workspaceId 要真的出现在 where 里，
+    // 否则「按 A 授权、往 B 写」在多工作区场景下会变成越权。
+    const tx = {
+      document: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue(documentRow({ contentVersion: 3 })),
+      },
+      documentVersion: { create: jest.fn().mockResolvedValue({ id: "v3" }) },
+    };
+    (getPrisma as jest.Mock).mockReturnValue(transactionDb(tx));
+
+    await saveDocument({
+      id: "doc_1",
+      workspaceId: "ws_from_document",
+      userId: "user_1",
+      title: "标题",
+      content: "正文",
+      summary: null,
+      format: "MARKDOWN",
+      baseVersion: 2,
+    });
+
+    expect(tx.document.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "doc_1",
+          workspaceId: "ws_from_document",
+          contentVersion: 2,
+          deletedAt: null,
+        }),
+      })
+    );
+  });
+
+  test("leaves the summary untouched when the form does not submit it", async () => {
+    const tx = {
+      document: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue(documentRow({ contentVersion: 3 })),
+      },
+      documentVersion: { create: jest.fn().mockResolvedValue({ id: "v3" }) },
+    };
+    (getPrisma as jest.Mock).mockReturnValue(transactionDb(tx));
+
+    await saveDocument({
+      id: "doc_1",
+      workspaceId: "ws_1",
+      userId: "user_1",
+      title: "标题",
+      content: "正文",
+      format: "MARKDOWN",
+      baseVersion: 2,
+    });
+
+    const updateArgs = tx.document.updateMany.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(updateArgs.data).not.toHaveProperty("summary");
+  });
+
   test("restoring a version creates a new current version", async () => {
     const current = { id: "doc_1", workspaceId: "ws_1", contentVersion: 3 };
     const source = {
