@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -13,9 +14,35 @@ export const metadata: Metadata = { title: "任务" };
 
 /**
  * 任务列表页（US-003 / US-004 / US-005 / US-006）。
- * 数据在服务端直读（architecture.md §7.1 通道 A），变更通过 Server Action 走通道 B。
- * 列表 / 看板用 URL Search Params 切换（可分享、可回退），P0-08 验收要求。
+ * 数据在服务端直读（architecture.md §8.1 通道 A），变更通过 Server Action 走通道 B。
+ * 列表 / 看板用 URL Search Params 切换（可分享、可回退）。
+ *
+ * 流式渲染（架构评审 P2-9）：页面外壳（标题、视图切换、创建表单、AI 面板）不依赖任务数据，
+ * 因此不等待查询就先把外壳送出去；列表区单独用 <Suspense> 包住，由 `IssueView` 自行取数。
+ * 效果是第一屏更快可见、且创建表单在慢查询下依然可用。
  */
+
+/** 列表区骨架：与 loading.tsx 的列表部分同形同宽，数据到达时不发生位移 */
+function IssueViewSkeleton() {
+  return (
+    <div className="mt-6 space-y-2" aria-busy="true">
+      <div className="h-20 w-full animate-pulse rounded-lg bg-hover" />
+      <div className="h-20 w-full animate-pulse rounded-lg bg-hover" />
+      <span className="sr-only">正在加载任务…</span>
+    </div>
+  );
+}
+
+/**
+ * 列表区：自己取数、自己渲染。
+ * workspaceId 由页面从服务端会话推导后传入——它始终来自服务端，绝不出自客户端入参。
+ */
+async function IssueView({ workspaceId, isBoard }: { workspaceId: string; isBoard: boolean }) {
+  const issues = await listIssues(workspaceId, isBoard ? "board" : "list");
+
+  return isBoard ? <Board issues={issues} /> : <IssueList issues={issues} />;
+}
+
 export default async function IssuesPage({
   searchParams,
 }: {
@@ -23,7 +50,6 @@ export default async function IssuesPage({
 }) {
   const [{ workspace }, params] = await Promise.all([requireWorkspaceContext(), searchParams]);
   const isBoard = params.view === "board";
-  const issues = await listIssues(workspace.id, isBoard ? "board" : "list");
 
   const pill = (active: boolean) =>
     `rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
@@ -32,8 +58,8 @@ export default async function IssuesPage({
 
   return (
     // 两种视图统一 max-w-6xl（1152px）：看板需要容纳 4×296px + 3×20px 间距 ≈ 1244px 的
-    // 可用宽度；列表对这个宽度也完全可用。统一宽度的另一目的是让 loading.tsx 的骨架
-    // 与两种视图都对齐（loading 拿不到 searchParams，无法按视图分档）。
+    // 可用宽度；列表对这个宽度也完全可用。统一宽度的另一目的是让骨架（loading.tsx 与下面的
+    // IssueViewSkeleton）与两种视图都对齐——骨架拿不到 searchParams，无法按视图分档。
     // 列宽由 Board 内部按容器宽度决定，见 components/board/Board.tsx。
     <div className="mx-auto max-w-6xl">
       <header className="flex flex-wrap items-end justify-between gap-2">
@@ -64,7 +90,10 @@ export default async function IssuesPage({
         </div>
       </section>
 
-      {isBoard ? <Board issues={issues} /> : <IssueList issues={issues} />}
+      {/* key 绑定视图：切换列表/看板时卸载重挂，避免把上一视图的骨架或状态错配到当前视图 */}
+      <Suspense key={isBoard ? "board" : "list"} fallback={<IssueViewSkeleton />}>
+        <IssueView workspaceId={workspace.id} isBoard={isBoard} />
+      </Suspense>
 
       <AiBreakdownPanel />
     </div>
