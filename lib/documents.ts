@@ -193,7 +193,8 @@ export async function saveDocument(input: DocumentSaveInput): Promise<DocumentIt
       },
     });
 
-    if (updated.count !== 1) throw new AppError("CONFLICT");
+    if (updated.count !== 1)
+      throw new AppError("CONFLICT", { message: "文档已被其他窗口修改，请刷新后重试" });
 
     const document = await tx.document.findUnique({
       where: { id: input.id },
@@ -230,7 +231,8 @@ export async function restoreDocumentVersion(input: DocumentRestoreInput): Promi
       select: { id: true, contentVersion: true },
     });
     if (!current) throw new AppError("NOT_FOUND");
-    if (current.contentVersion !== input.baseVersion) throw new AppError("CONFLICT");
+    if (current.contentVersion !== input.baseVersion)
+      throw new AppError("CONFLICT", { message: "文档已被其他窗口修改，请刷新后重试" });
 
     const source = await tx.documentVersion.findUnique({
       where: { documentId_version: { documentId: input.documentId, version: input.version } },
@@ -253,7 +255,8 @@ export async function restoreDocumentVersion(input: DocumentRestoreInput): Promi
         contentVersion: { increment: 1 },
       },
     });
-    if (updated.count !== 1) throw new AppError("CONFLICT");
+    if (updated.count !== 1)
+      throw new AppError("CONFLICT", { message: "文档已被其他窗口修改，请刷新后重试" });
 
     const document = await tx.document.findUnique({
       where: { id: input.documentId },

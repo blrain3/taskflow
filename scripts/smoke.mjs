@@ -241,6 +241,157 @@ async function signInWith(jar, email, password, extraHeaders = {}) {
   return response;
 }
 
+/** 写作平台文档链路（ADR-007 第一阶段）。
+ *
+ * 覆盖：创建 → 保存与版本 → 过期 baseVersion 冲突 → 跨 Workspace 越权 → 软删除。
+ * 全部通过无 JS 表单回放驱动（与登录/Issue 检查同一机制），
+ * 冲突与越权后的数据不变性用 Prisma 直查断言，避免只看 UI 文案。
+ */
+async function runDocumentChecks(jar, userId) {
+  const workspaceId = await findWorkspaceIdOf(userId);
+  const documentsUrl = `${BASE_URL}/documents`;
+  const title = `冒烟文档-${Date.now()}`;
+
+  // 1. 列表页渲染创建表单
+  const listPage = await fetchPage(documentsUrl, jar.header());
+  const createForm = extractForm(listPage.html, "create-document-form");
+  check(
+    "文档列表页渲染创建表单",
+    listPage.status === 200 && Boolean(createForm),
+    `http=${listPage.status}`
+  );
+
+  // 2. 创建文档：落库且归属当前 Workspace，列表可见
+  await submitForm(
+    documentsUrl,
+    createForm,
+    { title, content: "第一版正文", format: "MARKDOWN" },
+    jar.header()
+  );
+  const listAfterCreate = await fetchPage(documentsUrl, jar.header());
+  check("创建文档后列表出现新文档", listAfterCreate.html.includes(title), "");
+
+  const documentId = await withPrisma((prisma) =>
+    prisma.document.findFirst({ where: { workspaceId, title }, select: { id: true } })
+  ).then((row) => row?.id ?? null);
+  check("文档已落库且归属当前 Workspace", Boolean(documentId), "");
+
+  // 3. 编辑器保存：baseVersion=1 → contentVersion=2，并追加一条版本记录
+  const detailUrl = `${BASE_URL}/documents/${documentId}`;
+  const detailPage = await fetchPage(detailUrl, jar.header());
+  const editorForm = extractForm(detailPage.html, "document-editor-form");
+  check(
+    "编辑器页渲染保存表单（含 baseVersion 游标）",
+    Boolean(editorForm) && editorForm.includes('name="baseVersion"'),
+    ""
+  );
+
+  await submitForm(detailUrl, editorForm, { title, content: "第二版正文" }, jar.header());
+  const afterSave = await findDocumentVersionState(documentId);
+  check(
+    "保存成功且版本 +1",
+    afterSave?.contentVersion === 2 && afterSave?.versionCount === 2,
+    `contentVersion=${afterSave?.contentVersion} versions=${afterSave?.versionCount}`
+  );
+  const detailAfterSave = await fetchPage(detailUrl, jar.header());
+  check("版本历史可见最新内容", detailAfterSave.html.includes("第二版正文"), "");
+
+  // 4. 过期 baseVersion：模拟别处已保存（contentVersion 前移），旧游标提交必须被拒且不产生新版本
+  await withPrisma((prisma) =>
+    prisma.document.update({
+      where: { id: documentId },
+      data: { contentVersion: { increment: 1 } },
+    })
+  );
+  // 复用步骤 3 抓取的表单：其隐藏 baseVersion=1，相对递增后的库内版本必然过期
+  const conflictResponse = await submitForm(
+    detailUrl,
+    editorForm,
+    { title, content: "过期提交不应落库" },
+    jar.header()
+  );
+  const conflictHtml = await conflictResponse.text();
+  check(
+    "过期 baseVersion 保存被拒并提示冲突",
+    conflictHtml.includes("文档已被其他窗口修改，请刷新后重试"),
+    ""
+  );
+  const afterConflict = await findDocumentVersionState(documentId);
+  const contentAfterConflict = await withPrisma((prisma) =>
+    prisma.document.findUnique({ where: { id: documentId }, select: { content: true } })
+  );
+  check(
+    "冲突未覆盖内容且未产生新版本",
+    afterConflict.contentVersion === 3 &&
+      afterConflict.versionCount === 2 &&
+      !contentAfterConflict.content.includes("过期提交不应落库"),
+    `contentVersion=${afterConflict.contentVersion} versions=${afterConflict.versionCount}`
+  );
+
+  // 5. 跨 Workspace 越权：第二个账号访问详情 404、保存被拒且数据不变
+  const secondJar = new CookieJar();
+  const secondSignIn = await signInWith(secondJar, SECOND_EMAIL, SECOND_PASSWORD);
+  check(
+    "越权测试账号登录成功",
+    secondSignIn.status === 302 && secondJar.has("session-token"),
+    `http=${secondSignIn.status}`
+  );
+  await fetchPage(`${BASE_URL}/issues`, secondJar.header());
+  const forbiddenResponse = await fetch(detailUrl, {
+    headers: { cookie: secondJar.header() },
+    redirect: "manual",
+  });
+  const forbiddenHtml = await forbiddenResponse.text();
+  check(
+    "非成员访问文档详情返回 404 页面",
+    forbiddenResponse.status === 404 || forbiddenHtml.includes("页面不存在"),
+    `http=${forbiddenResponse.status}`
+  );
+  await submitForm(
+    detailUrl,
+    editorForm,
+    { title, content: "越权写入不应落库" },
+    secondJar.header()
+  );
+  const afterForbidden = await findDocumentVersionState(documentId);
+  check(
+    "非成员保存被拒且数据不变",
+    afterForbidden.contentVersion === 3 && afterForbidden.versionCount === 2,
+    ""
+  );
+
+  // 6. 软删除：列表不可见、详情 404，版本历史行保留
+  const listBeforeDelete = await fetchPage(documentsUrl, jar.header());
+  const deleteForm = extractForm(listBeforeDelete.html, `delete-document-form-${documentId}`);
+  check("列表页渲染删除表单", Boolean(deleteForm), "");
+  await submitForm(documentsUrl, deleteForm, {}, jar.header());
+  const listAfterDelete = await fetchPage(documentsUrl, jar.header());
+  check("软删除后列表不再显示该文档", !listAfterDelete.html.includes(title), "");
+  const detailAfterDelete = await fetchPage(detailUrl, jar.header());
+  check(
+    "软删除后详情页返回 404 页面",
+    detailAfterDelete.status === 404 || detailAfterDelete.html.includes("页面不存在"),
+    `http=${detailAfterDelete.status}`
+  );
+  const keptVersions = await withPrisma((prisma) =>
+    prisma.documentVersion.count({ where: { documentId } })
+  );
+  check("软删除保留版本历史行", keptVersions === 2, `versions=${keptVersions}`);
+}
+
+/** 读取文档的当前版本号与版本记录数，供冲突与越权断言使用 */
+async function findDocumentVersionState(documentId) {
+  return withPrisma(async (prisma) => {
+    const document = await prisma.document.findUnique({
+      where: { id: documentId },
+      select: { contentVersion: true, _count: { select: { versions: true } } },
+    });
+    return document
+      ? { contentVersion: document.contentVersion, versionCount: document._count.versions }
+      : null;
+  });
+}
+
 /** 第 2 梯队：Issue CRUD 与跨 Workspace 越权 */
 async function runIssueCrudChecks(primaryJar, primaryUserId) {
   const issuesUrl = `${BASE_URL}/issues`;
@@ -674,18 +825,13 @@ async function runAuthRateLimitChecks(prodLikeTarget) {
     );
   }
 
-  // REST 凭据回调与登录表单走同一层限流：先用错误密码打满邮箱失败桶，
-  // 再用正确密码直接打 REST 端点——若仍能拿到会话，说明限流被绕开（P0 漏洞回归断言）。
+  // REST 凭据回调自身必须执行限流：直接向公开 callback 连续提交错误密码打满组合桶，
+  // 再用正确密码请求同一端点与同一 IP——若仍能拿到会话，说明可绕过页面层限流。
   const restIp = `smoke-rest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const restHeaders = expectIpDimension ? { "x-forwarded-for": restIp } : {};
   for (let attempt = 0; attempt < loginLimit; attempt += 1) {
-    await submitForm(
-      `${BASE_URL}/login`,
-      loginForm,
-      { email: TEST_EMAIL, password: "WrongPassword123" },
-      "",
-      restHeaders
-    );
+    const failedJar = new CookieJar();
+    await signInWith(failedJar, TEST_EMAIL, "WrongPassword123", restHeaders);
   }
   const restJar = new CookieJar();
   await signInWith(restJar, TEST_EMAIL, TEST_PASSWORD, restHeaders);
@@ -792,6 +938,9 @@ async function main() {
 
   // 7. 第 2 梯队：Issue CRUD 与跨 Workspace 越权
   await runIssueCrudChecks(jar, userId);
+
+  // 7a-2. 写作平台文档链路（ADR-007 第一阶段）：创建 → 保存/版本 → 冲突 → 越权 → 软删除
+  await runDocumentChecks(jar, userId);
 
   // 7b. 第 4 梯队：AI 拆分与限流
   await runAiChecks(jar);

@@ -28,7 +28,16 @@ type Bucket = {
 
 const buckets = new Map<string, Bucket>();
 
-/** 最多同时跟踪的 key 数；超出时按插入顺序淘汰最旧的（FIFO，非严格 LRU） */
+/**
+ * 最多同时跟踪的 key 数；超出时按 **LRU（最久未命中先淘汰）** 淘汰。
+ *
+ * 这里必须用 LRU 而不是「按插入顺序淘汰」，原因是 Map 的语义：
+ * `Map.set()` 对**已存在**的 key 不会改变它在遍历顺序中的位置，
+ * 因此「最早插入」的恰恰是长期活跃的合法 key（例如某台常用设备的登录桶），
+ * 按插入顺序淘汰会优先把这类 key 挤掉，淘汰顺序与保护目标正好相反。
+ * `recordRateLimitHit` 每次写入前先 `delete` 再 `set`，使遍历顺序等于「最近命中顺序」，
+ * 淘汰队首即淘汰最久未命中者。
+ */
 const MAX_TRACKED_KEYS = 5_000;
 
 /** 全量清理的最小间隔，避免每次调用都遍历整个 Map */
@@ -55,28 +64,34 @@ function recentHits(key: string, now: number, windowMs: number): number[] {
 }
 
 /**
- * 清理过期 key；超过容量上限时按插入顺序淘汰。
- * 由写入路径触发，但有最小间隔，避免高频写入时反复遍历。
+ * 过期清理 + 容量淘汰。**只在写入前调用**（见 recordRateLimitHit），因此这里必须
+ * 为「即将写入的那个 key」腾出空位，否则上限会被顶到 MAX + 1。
+ *
+ * 两件事分开处理：
+ * 1) 过期清理按时间间隔摊销（全量遍历 Map，不限制频率会很贵）；
+ * 2) 容量淘汰每次写入都做，但每次最多淘汰一个（队首即最久未命中者），因此是 O(1)。
+ *    这一点很重要：它把「容量满时的高频写入」从「每次全量扫描」降为摊销成本。
  */
 function sweep(now: number): void {
-  if (now - lastSweepAt < SWEEP_INTERVAL_MS && buckets.size <= MAX_TRACKED_KEYS) return;
-  lastSweepAt = now;
+  if (now - lastSweepAt >= SWEEP_INTERVAL_MS) {
+    lastSweepAt = now;
 
-  for (const [key, bucket] of buckets) {
-    const cutoff = now - bucket.windowMs;
-    const newest = bucket.hits[bucket.hits.length - 1];
-    if (newest === undefined || newest <= cutoff) {
-      buckets.delete(key);
+    for (const [key, bucket] of buckets) {
+      const cutoff = now - bucket.windowMs;
+      const newest = bucket.hits[bucket.hits.length - 1];
+      if (newest === undefined || newest <= cutoff) {
+        buckets.delete(key);
+      }
     }
   }
 
-  if (buckets.size <= MAX_TRACKED_KEYS) return;
-
-  // 仍然超限（说明正被海量随机 key 冲击）：按插入顺序淘汰，优先保住内存。
+  // 淘汰队首直到有空位。队首是「最久未命中」的 key（写入时会刷新位置），
+  // 因此长期活跃的合法 key 不会被海量随机 key 挤掉。
   // 代价是被淘汰 key 的计数归零，极端冲击下额度会短暂放宽——可接受。
-  for (const key of buckets.keys()) {
-    if (buckets.size <= MAX_TRACKED_KEYS) break;
-    buckets.delete(key);
+  while (buckets.size >= MAX_TRACKED_KEYS) {
+    const oldest = buckets.keys().next();
+    if (oldest.done) break;
+    buckets.delete(oldest.value);
   }
 }
 
@@ -109,6 +124,10 @@ export function recordRateLimitHit(key: string, windowMs: number): void {
 
   const recent = recentHits(key, now, windowMs);
   recent.push(now);
+
+  // 先删再插，把该 key 移到遍历顺序末尾——这一步是 LRU 的关键。
+  // 若直接 set 一个已存在的 key，它在 Map 中的位置不变，淘汰顺序就会退化成「按首次插入」。
+  buckets.delete(key);
   buckets.set(key, { hits: recent, windowMs });
 }
 
@@ -126,4 +145,21 @@ export function resetRateLimit(key: string): void {
 /** 诊断用：当前跟踪的 key 数量（用于验证容量上限生效） */
 export function trackedKeyCount(): number {
   return buckets.size;
+}
+
+/**
+ * 诊断用：按「即将被淘汰的先后」列出当前跟踪的 key。
+ *
+ * 存在的意义是让 LRU 这条不变量**可被测试钉住**——它不会体现在任何返回值上，
+ * 一旦有人把 `recordRateLimitHit` 的「先删再插」改回直接 set，
+ * 淘汰顺序会静默退化成按首次插入，只有这个访问器能暴露该回归。
+ */
+export function trackedKeys(): string[] {
+  return [...buckets.keys()];
+}
+
+/** 诊断用：清空全部计数。仅用于测试隔离，业务代码不得调用。 */
+export function resetAllRateLimits(): void {
+  buckets.clear();
+  lastSweepAt = 0;
 }

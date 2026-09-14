@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { WorkspaceRole } from "@prisma/client";
 import { cache } from "react";
 
 import type { AuthedUser } from "@/lib/auth";
@@ -16,7 +17,12 @@ import { getPrisma } from "@/lib/prisma";
 export type WorkspaceSummary = {
   id: string;
   name: string;
-  role: string;
+  /**
+   * 成员角色。类型取自 Prisma 生成的枚举而非裸 string——
+   * 角色是授权判定依据（文档域 edit / restore 要求 OWNER 或 EDITOR），
+   * 用裸 string 会让拼写错误在编译期静默通过（架构评审 P1-8）。
+   */
+  role: WorkspaceRole;
 };
 
 const DEFAULT_WORKSPACE_NAME = "我的工作区";
@@ -38,7 +44,7 @@ function defaultWorkspaceId(userId: string): string {
 }
 
 function toSummary(row: {
-  role: string;
+  role: WorkspaceRole;
   workspace: { id: string; name: string };
 }): WorkspaceSummary {
   return { id: row.workspace.id, name: row.workspace.name, role: row.role };

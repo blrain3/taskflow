@@ -1,9 +1,10 @@
 import "server-only";
 
+import { logError } from "@/lib/logger";
 import type { ActionError, ErrorCode } from "@/types/action";
 
 /**
- * 统一错误模型（docs/02-architecture/architecture.md §11）。
+ * 统一错误模型（docs/02-architecture/architecture.md §11.3 错误码、§13 错误处理约定）。
  *
  * 原则：
  * 1. 对外只暴露安全文案，内部细节只进服务端日志。
@@ -54,11 +55,14 @@ export function ok<T>(data: T): { ok: true; data: T } {
 /**
  * 把任意异常收敛为 ActionResult。
  * 只有 AppError 的 code / message / fields 会被下发；其余情况记日志后返回 INTERNAL。
+ *
+ * 日志经 `lib/logger.ts` 的统一出口写出，不在本函数里直接调用 console——
+ * 这样本函数的可观察行为仍由入参决定，格式替换也只有一处（架构评审 P2-4）。
  */
 export function toActionError(error: unknown): ActionError {
   if (error instanceof AppError) {
     if (error.code === "INTERNAL" || error.detail !== undefined) {
-      console.error(`[action-error] ${error.code}`, error.detail ?? error.cause ?? error.message);
+      logError(`[action-error] ${error.code}`, error.detail ?? error.cause ?? error.message);
     }
     return {
       code: error.code,
@@ -67,7 +71,7 @@ export function toActionError(error: unknown): ActionError {
     };
   }
 
-  console.error("[action-error] 未预期异常", {
+  logError("[action-error] 未预期异常", {
     name: error instanceof Error ? error.name : "UnknownError",
     message: error instanceof Error ? error.message : "non-error value",
   });

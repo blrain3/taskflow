@@ -31,6 +31,15 @@ enum IssueStatus {
   DONE
 }
 
+/// 工作区成员角色（架构评审 P1-8）。
+/// 用数据库枚举而非裸 String：角色是授权判定依据（文档域的 edit / restore 要求 OWNER 或 EDITOR），
+/// 裸字符串允许任意值入库，等同于把一个拼写错误变成「悄无声息的拒绝」。
+/// 第一阶段只有 OWNER 与 EDITOR 两种实际取值——没有只读邀请流程，不预先声明未被使用的 MEMBER。
+enum WorkspaceRole {
+  OWNER
+  EDITOR
+}
+
 /// 用户：邮箱唯一，密码只存哈希（禁止明文）
 model User {
   id            String    @id @default(cuid())
@@ -84,10 +93,13 @@ model Session {
   @@index([userId])
 }
 
-/// 任务数据的隔离单元：所有 Issue 查询的强制过滤维度
+/// 数据的隔离单元：所有 Issue / Document 查询的强制过滤维度
 model Workspace {
   id        String   @id @default(cuid())
   name      String
+  /// 创建者。**仅作展示与审计，不参与权限判定**——判定一律以 WorkspaceMember 为准（架构评审 P1-9）。
+  /// 两处都表达「归属」是历史产物；将来实现所有权移交时必须同步更新本字段与成员表，
+  /// 否则会出现「ownerId 说 A、成员表说 B」而判定只看后者的漂移。
   ownerId   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -100,12 +112,13 @@ model Workspace {
   @@index([ownerId])
 }
 
-/// 成员关系：权限判定的依据
+/// 成员关系：**权限判定的唯一依据**
 model WorkspaceMember {
-  id          String   @id @default(cuid())
+  id          String        @id @default(cuid())
   workspaceId String
   userId      String
-  role        String   @default("OWNER")
+  /// 角色。第一阶段判定规则：read 只要求成员身份；edit / restore 要求 OWNER 或 EDITOR
+  role        WorkspaceRole @default(OWNER)
   createdAt   DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

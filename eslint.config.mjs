@@ -58,7 +58,11 @@ const componentRules = {
         {
           group: ["@/lib/prisma", "**/lib/prisma"],
           message:
-            "components/ 不得直接访问数据库：写操作走 actions/，读操作由 app/ 的 Server Component 注入 props。",
+            "components/ 与 hooks/ 不得直接访问数据库：写操作走 actions/，读操作由 app/ 的 Server Component 注入 props。",
+        },
+        {
+          group: ["@/app/*", "**/app/*"],
+          message: "components/ 与 hooks/ 不得依赖路由层：依赖只能向下（架构评审 P1-5）。",
         },
       ],
     },
@@ -89,10 +93,13 @@ const eslintConfig = defineConfig([
                 "**/components/*",
                 "@/app/*",
                 "**/app/*",
+                "@/hooks/*",
+                "**/hooks/*",
                 "react",
                 "react-dom",
               ],
-              message: "actions/ 不得依赖 UI 层与路由层：仅允许编排 lib/ 与 Prisma。",
+              message:
+                "actions/ 不得依赖 UI 层、路由层与客户端状态逻辑：仅允许编排 lib/ 与 Prisma。",
             },
           ],
         },
