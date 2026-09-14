@@ -36,7 +36,11 @@ export function DeleteDocumentForm({ documentId, title }: { documentId: string; 
 
         <FormError message={state && !state.ok ? state.error.message : undefined} />
 
-        <form action={formAction} className="flex justify-end">
+        <form
+          id={`delete-document-form-${documentId}`}
+          action={formAction}
+          className="flex justify-end"
+        >
           <input type="hidden" name="id" value={documentId} />
           <SubmitButton variant="ghost" className="text-xs text-danger" pendingText="删除中…">
             确认删除

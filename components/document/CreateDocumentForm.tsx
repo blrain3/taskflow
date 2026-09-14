@@ -29,7 +29,12 @@ export function CreateDocumentForm() {
   }, [router, state]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-3 rounded-lg border border-line p-4">
+    <form
+      id="create-document-form"
+      ref={formRef}
+      action={formAction}
+      className="space-y-3 rounded-lg border border-line p-4"
+    >
       <h2 className="text-sm font-medium text-fg">新建文档</h2>
 
       <div>

@@ -45,7 +45,7 @@ export function DocumentEditor({ document }: { document: DocumentItem }) {
   else if (hasUnsavedChanges) statusText = "未保存，停止输入后自动保存";
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-4">
+    <form id="document-editor-form" ref={formRef} action={formAction} className="space-y-4">
       <input type="hidden" name="id" value={document.id} />
       <input type="hidden" name="baseVersion" value={savedVersion} />
       <input type="hidden" name="format" value={document.format} />
