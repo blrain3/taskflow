@@ -1,0 +1,61 @@
+# TaskFlow 本地一键启动：应用 + PostgreSQL
+#
+# 用法：
+#   1. cp .env.example .env        （至少确认 AUTH_SECRET 已填写）
+#   2. docker compose up -d --build
+#   3. 打开 http://localhost:3000/api/health，看到 status: ok 即表示应用与数据库均可用
+#
+# 说明：迁移由 app 容器的 entrypoint 执行（prisma migrate deploy），
+#      因此数据库只需先进入 healthy 状态。
+
+name: taskflow
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-taskflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskflow}
+      POSTGRES_DB: ${POSTGRES_DB:-taskflow}
+    ports:
+      # 只绑定本机回环：局域网内其它机器不应能直连开发数据库（默认口令的 PostgreSQL 暴露在 0.0.0.0 上是常见事故源）
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-taskflow} -d ${POSTGRES_DB:-taskflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # 容器内以服务名 db 访问数据库，覆盖 .env 里给裸机开发用的 localhost
+      DATABASE_URL: postgresql://${POSTGRES_USER:-taskflow}:${POSTGRES_PASSWORD:-taskflow}@db:5432/${POSTGRES_DB:-taskflow}?schema=public
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      # 仅供宿主机 Nginx 反代，禁止直接暴露到公网
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  pgdata:

@@ -1,0 +1,23 @@
+# 腾讯云生产部署：应用容器 + 外部腾讯云 PostgreSQL
+# PostgreSQL 不在本文件中运行，也不暴露 5432；DATABASE_URL 指向云数据库内网地址。
+
+name: taskflow-prod
+
+services:
+  app:
+    image: ${TASKFLOW_IMAGE:-taskflow:latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
