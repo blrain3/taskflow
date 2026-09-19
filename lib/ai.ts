@@ -363,7 +363,10 @@ export async function summarizeDocumentContent(
     return result;
   } catch (error) {
     if (error instanceof AppError) throw error;
-    if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+    if (
+      controller.signal.aborted ||
+      (error instanceof DOMException && error.name === "AbortError")
+    ) {
       throw new AppError("AI_TIMEOUT");
     }
     throw new AppError("INTERNAL", { detail: "AI 上游请求失败", cause: error });

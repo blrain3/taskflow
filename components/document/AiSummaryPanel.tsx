@@ -79,12 +79,7 @@ export function AiSummaryPanel({ documentId }: { documentId: string }) {
         {generateError ? <FormError message={generateError} /> : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleGenerate}
-            disabled={generating}
-          >
+          <Button type="button" variant="secondary" onClick={handleGenerate} disabled={generating}>
             {generating ? "生成中…" : suggestion ? "重新生成" : "生成摘要"}
           </Button>
 
