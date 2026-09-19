@@ -23,7 +23,7 @@ export function DeleteDocumentForm({ documentId, title }: { documentId: string; 
   return (
     <details className="shrink-0">
       <summary
-        className="cursor-pointer rounded-md px-1.5 py-0.5 text-xs text-danger hover:bg-hover"
+        className="cursor-pointer rounded-md px-1.5 py-0.5 text-xs text-danger hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         aria-label={`删除「${title}」`}
       >
         删除

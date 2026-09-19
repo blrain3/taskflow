@@ -6,6 +6,7 @@ import { Board } from "@/components/board/Board";
 import { AiBreakdownPanel } from "@/components/issue/AiBreakdownPanel";
 import { IssueForm } from "@/components/issue/IssueForm";
 import { IssueList } from "@/components/issue/IssueList";
+import { Skeleton } from "@/components/ui/skeleton";
 import { listIssues } from "@/lib/issues";
 import { requireWorkspaceContext } from "@/lib/permissions";
 
@@ -26,8 +27,8 @@ export const metadata: Metadata = { title: "任务" };
 function IssueViewSkeleton() {
   return (
     <div className="mt-6 space-y-2" aria-busy="true">
-      <div className="h-20 w-full animate-pulse rounded-lg bg-hover" />
-      <div className="h-20 w-full animate-pulse rounded-lg bg-hover" />
+      <Skeleton className="h-20 w-full rounded-lg" />
+      <Skeleton className="h-20 w-full rounded-lg" />
       <span className="sr-only">正在加载任务…</span>
     </div>
   );
@@ -51,6 +52,11 @@ export default async function IssuesPage({
   const [{ workspace }, params] = await Promise.all([requireWorkspaceContext(), searchParams]);
   const isBoard = params.view === "board";
 
+  /**
+   * 视图切换胶囊（toggle 语义，不是按钮）：保持圆角胶囊形与 Button 的 rounded-md 区分开。
+   * 令牌取值（bg-brand / border-line-strong / hover）与 Button 的 primary / secondary
+   * 一致，只差形状——若将来引入独立的 Segmented/Toggle 组件，此处应替换而非继续内联。
+   */
   const pill = (active: boolean) =>
     `rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
       active ? "bg-brand text-fg-inverse" : "border border-line-strong text-fg-muted hover:bg-hover"

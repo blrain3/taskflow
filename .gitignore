@@ -13,6 +13,13 @@
 # testing
 /coverage
 
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+tests/e2e/.auth/
+
 # next.js
 /.next/
 /out/
@@ -52,3 +59,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+node_modules
+dist
+build
+.next
+out
+.venv
+venv
+__pycache__
+.cache
+.turbo
+coverage
+.parcel-cache

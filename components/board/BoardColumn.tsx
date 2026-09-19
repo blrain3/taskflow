@@ -3,6 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 
+import { Badge } from "@/components/ui/badge";
 import { SortableIssueCard } from "@/components/board/IssueCard";
 import {
   ISSUE_STATUS_LABELS,
@@ -39,11 +40,9 @@ export function BoardColumn({
       }`}
     >
       <header className="flex items-center justify-between px-1 pb-2">
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${ISSUE_STATUS_STYLES[status]}`}
-        >
+        <Badge variant="status" className={ISSUE_STATUS_STYLES[status]}>
           {label}
-        </span>
+        </Badge>
         <span className="text-xs text-fg-subtle">{items.length}</span>
       </header>
 

@@ -28,7 +28,7 @@ export function RestoreVersionForm({
 
   return (
     <details className="shrink-0">
-      <summary className="cursor-pointer text-xs text-fg-muted hover:text-fg">
+      <summary className="cursor-pointer rounded-sm text-xs text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
         恢复
         <span className="sr-only">版本 {version}</span>
       </summary>

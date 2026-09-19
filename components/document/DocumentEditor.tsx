@@ -22,8 +22,12 @@ export function DocumentEditor({ document }: { document: DocumentItem }) {
   // AUTOSAVE_DELAY_MS 写一次库的死循环（每次还会多插一条版本记录）。
   const [submittedRevision, setSubmittedRevision] = useState(0);
 
+  // DocumentActionState 是各入口共享的联合类型：只有保存入口回传 contentVersion，
+  // 其他入口（摘要写入/删除/恢复）不递增版本号，此时退回服务端渲染的最新版本
   const savedVersion =
-    state?.ok && state.data ? state.data.contentVersion : document.contentVersion;
+    state?.ok && state.data && "contentVersion" in state.data
+      ? state.data.contentVersion
+      : document.contentVersion;
   const hasUnsavedChanges = revision !== submittedRevision;
 
   useEffect(() => {
@@ -53,7 +57,10 @@ export function DocumentEditor({ document }: { document: DocumentItem }) {
         name="title"
         defaultValue={document.title}
         aria-label="文档标题"
-        className="border-0 px-0 text-2xl font-semibold shadow-none focus-visible:ring-0"
+        // 伪装成大标题的输入框：常态去边框/阴影，但焦点环保留基类契约——
+        // 此前 focus-visible:ring-0 把焦点指示整个压掉，违反规范「禁止移除 outline
+        // 而不提供替代」（ui-design-system-v2.md 无障碍行），已改。
+        className="border-0 px-0 text-2xl font-semibold shadow-none"
         onChange={markEdited}
       />
       <Textarea

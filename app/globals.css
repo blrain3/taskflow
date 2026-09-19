@@ -91,6 +91,10 @@
   --bg-hover: rgb(255 255 255 / 0.055);
   --bg-active: rgb(255 255 255 / 0.09);
 
+  /* 遮罩：Dialog/Drawer 的全屏压暗层。深色取 0.6——深底上 0.5 的压暗感偏弱，
+     浮层边界发虚；浅色取 0.5 与迁移前的 bg-black/50 一致（视觉零变化）。 */
+  --bg-scrim: rgb(0 0 0 / 0.6);
+
   /* 描边 */
   --border-subtle: rgb(255 255 255 / 0.07);
   --border-default: rgb(255 255 255 / 0.12);
@@ -152,6 +156,8 @@
   --bg-hover: rgb(0 0 0 / 0.045);
   --bg-active: rgb(0 0 0 / 0.07);
 
+  --bg-scrim: rgb(0 0 0 / 0.5);
+
   --border-subtle: rgb(0 0 0 / 0.08);
   --border-default: rgb(0 0 0 / 0.14);
   --border-strong: rgb(0 0 0 / 0.22);
@@ -206,13 +212,14 @@
    在运行时跟随 [data-theme] 切换，而不是被固化成一个静态色值。
    ─────────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  /* 表面 → bg-canvas / bg-surface / bg-raised / bg-overlay / bg-hover / bg-active */
+  /* 表面 → bg-canvas / bg-surface / bg-raised / bg-overlay / bg-hover / bg-active / bg-scrim */
   --color-canvas: var(--bg-canvas);
   --color-surface: var(--bg-surface);
   --color-raised: var(--bg-raised);
   --color-overlay: var(--bg-overlay);
   --color-hover: var(--bg-hover);
   --color-active: var(--bg-active);
+  --color-scrim: var(--bg-scrim);
 
   /* 描边 → border-line / border-line-strong / border-line-heavy */
   --color-line: var(--border-subtle);

@@ -3,9 +3,11 @@
 import { useActionState, useState } from "react";
 
 import { deleteIssueAction, updateIssueAction, type IssueFormState } from "@/actions/issue";
+import { Badge } from "@/components/ui/badge";
 import { FieldError, FormError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Textarea } from "@/components/ui/textarea";
 import { ISSUE_DESCRIPTION_MAX_LENGTH, ISSUE_TITLE_MAX_LENGTH } from "@/lib/validation";
@@ -16,7 +18,8 @@ import {
   type IssueItem,
 } from "@/types/issue";
 
-const summaryClassName = "cursor-pointer text-xs text-fg-muted hover:text-fg";
+const summaryClassName =
+  "cursor-pointer rounded-sm text-xs text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 /**
  * 单个任务：展示 + 行内编辑 + 行内删除确认。
@@ -55,11 +58,9 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
   return (
     <div className="px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${ISSUE_STATUS_STYLES[issue.status]}`}
-        >
+        <Badge variant="status" className={ISSUE_STATUS_STYLES[issue.status]}>
           {ISSUE_STATUS_LABELS[issue.status]}
-        </span>
+        </Badge>
         <span className="text-sm font-medium text-fg">{issue.title}</span>
       </div>
 
@@ -130,11 +131,11 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
               <Label className="block" htmlFor={`status-${issue.id}`}>
                 状态
               </Label>
-              <select
+              <Select
                 id={`status-${issue.id}`}
                 name="status"
                 defaultValue={issue.status}
-                className="mt-1 block h-9 w-full rounded-md border border-line-strong bg-raised px-3 py-2 text-sm text-fg"
+                className="mt-1"
                 aria-invalid={updateFields?.status ? true : undefined}
                 aria-describedby={updateFields?.status ? `status-${issue.id}-error` : undefined}
               >
@@ -143,7 +144,7 @@ export function IssueRow({ issue }: { issue: IssueItem }) {
                     {ISSUE_STATUS_LABELS[status]}
                   </option>
                 ))}
-              </select>
+              </Select>
               <FieldError id={`status-${issue.id}-error`} message={updateFields?.status} />
             </div>
 

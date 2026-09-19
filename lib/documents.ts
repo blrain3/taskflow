@@ -5,6 +5,7 @@ import type { DocumentContentFormat, Prisma } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import type {
+  ApplyDocumentSummaryInput,
   CreateDocumentInput,
   RestoreDocumentVersionInput,
   SaveDocumentInput,
@@ -323,4 +324,35 @@ export async function deleteDocument(input: { id: string; workspaceId: string })
   });
 
   if (result.count !== 1) throw new AppError("NOT_FOUND");
+}
+
+/**
+ * 写入文档摘要（AI 建议经用户确认后的落库入口）。
+ *
+ * 刻意**不递增 contentVersion、不写 DocumentVersion**：摘要属于元数据而非正文，
+ * 版本历史的语义是「正文快照」。更关键的是乐观锁——编辑器正持有当前 contentVersion
+ * 作为 baseVersion，这里若递增，用户下一次自动保存必然 CONFLICT。
+ * 代价是当前版本的 summary 快照会滞后，属可接受的取舍（恢复旧版本本就会覆盖摘要）。
+ */
+export async function applyDocumentSummary(
+  input: ApplyDocumentSummaryInput & { workspaceId: string }
+): Promise<DocumentItem> {
+  const updated = await getPrisma().document.updateMany({
+    where: {
+      id: input.documentId,
+      workspaceId: input.workspaceId,
+      deletedAt: null,
+    },
+    // summary 为 null 表示显式清空（schema 已把空串归一成 null）
+    data: { summary: input.summary },
+  });
+  if (updated.count !== 1) throw new AppError("NOT_FOUND");
+
+  const document = await getPrisma().document.findFirst({
+    where: { id: input.documentId, workspaceId: input.workspaceId, deletedAt: null },
+    select: DOCUMENT_DETAIL_SELECT,
+  });
+  if (!document) throw new AppError("NOT_FOUND");
+
+  return toDocumentItem(document);
 }

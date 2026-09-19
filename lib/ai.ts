@@ -227,3 +227,147 @@ export async function breakdownSubtasks(prompt: string, userId: string): Promise
 
   throw new AppError("INTERNAL", { detail: "AI 调用异常", cause: lastError });
 }
+
+/** ---------- 写作域：摘要生成（ADR-007 P1；与拆解共用限流、超时与错误映射骨架） ---------- */
+
+export type SummaryResult = {
+  summary: string;
+  usage: BreakdownUsage;
+  provider: "openai" | "mock";
+};
+
+/** 与 documentSummarySchema 的上限一致：AI 输出超出时直接截断，避免写入被 Schema 拒绝 */
+const SUMMARY_MAX_LENGTH = 2000;
+/** 正文短于该长度时摘要没有信息量，直接拒绝而不是生成一段空话 */
+const SUMMARY_MIN_CONTENT_LENGTH = 20;
+
+const SUMMARY_SYSTEM_PROMPT = [
+  "你是文档写作助手。请根据给定正文写一段简体中文摘要。",
+  "要求：客观概括正文的主题与要点，不评价、不扩写、不使用 markdown；",
+  `长度不超过 ${SUMMARY_MAX_LENGTH} 个字符；只输出摘要正文，不要任何前后缀说明。`,
+].join("\n");
+
+function summaryPrompt(content: string): string {
+  return `文档正文：\n"""\n${content}\n"""`;
+}
+
+/** mock 摘要与正文内容绑定，E2E/冒烟可以断言「正文确实流经了生成链路」 */
+function summarizeWithMock(content: string, abortSignal: AbortSignal): Promise<SummaryResult> {
+  // 与拆解一致：内容含 TIMEOUT 时挂起直到超时控制真正 abort，走通真实超时链路
+  if (/TIMEOUT/i.test(content)) {
+    return new Promise<never>((_, reject) => {
+      abortSignal.addEventListener("abort", () => {
+        reject(new DOMException("aborted", "AbortError"));
+      });
+    });
+  }
+
+  const summary = `【mock 摘要】${content.replace(/\s+/g, " ").trim().slice(0, 60)}`;
+  void abortSignal;
+  const promptTokens = estimateTokens(SUMMARY_SYSTEM_PROMPT + content);
+  const completionTokens = estimateTokens(summary);
+  return Promise.resolve({
+    summary,
+    provider: "mock" as const,
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+      estimated: true,
+    },
+  });
+}
+
+async function summarizeWithOpenAi(
+  content: string,
+  abortSignal: AbortSignal
+): Promise<SummaryResult> {
+  const openai = createOpenAI({
+    baseURL: env.AI_BASE_URL,
+    apiKey: env.AI_API_KEY,
+  });
+
+  const result = await generateText({
+    model: openai.chat(env.AI_MODEL),
+    system: SUMMARY_SYSTEM_PROMPT,
+    prompt: summaryPrompt(content),
+    abortSignal,
+  });
+
+  const summary = result.text.trim().slice(0, SUMMARY_MAX_LENGTH);
+  if (summary.length === 0) {
+    throw new AppError("AI_INVALID_OUTPUT", { detail: "上游返回了空摘要" });
+  }
+
+  const promptTokens = result.usage?.inputTokens ?? 0;
+  const completionTokens = result.usage?.outputTokens ?? 0;
+  return {
+    summary,
+    provider: "openai" as const,
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+      estimated: false,
+    },
+  };
+}
+
+/**
+ * 摘要生成入口：限流 → 调用 → 截断。与拆解同样「只产出、不写库」——写库由用户确认后的
+ * Server Action 完成，这样建议在被采纳前不会污染文档。
+ *
+ * 与拆解刻意不同的两点：
+ * 1. 输出是纯文本而非结构化 JSON，无需 parse 步骤；
+ * 2. 不做瞬时故障重试：摘要是可重新生成的低风险操作，失败让用户点「重新生成」更直接。
+ */
+export async function summarizeDocumentContent(
+  content: string,
+  userId: string
+): Promise<SummaryResult> {
+  if (content.trim().length < SUMMARY_MIN_CONTENT_LENGTH) {
+    throw new AppError("VALIDATION_FAILED", { message: "正文太短，暂无法生成摘要" });
+  }
+
+  const provider = env.AI_PROVIDER;
+  if (provider === "openai") {
+    const disabled = disabledFeatures().find((item) => item.feature === "ai");
+    if (disabled) {
+      throw new AppError("AI_DISABLED", {
+        message: `AI 服务未启用：缺少 ${disabled.missing.join("、")}`,
+        detail: { missing: disabled.missing },
+      });
+    }
+  }
+
+  // 与拆解使用同一个限流器但独立分桶：两个功能互不挤占额度
+  consumeRateLimit({
+    key: `ai:summary:${userId}`,
+    limit: env.AI_RATE_LIMIT_PER_MINUTE,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), env.AI_TIMEOUT_MS);
+
+  try {
+    const result =
+      provider === "mock"
+        ? await summarizeWithMock(content, controller.signal)
+        : await summarizeWithOpenAi(content, controller.signal);
+
+    console.log(
+      `[ai] summary ok provider=${provider} chars=${result.summary.length} ` +
+        `tokens(total=${result.usage.totalTokens} estimated=${result.usage.estimated})`
+    );
+    return result;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      throw new AppError("AI_TIMEOUT");
+    }
+    throw new AppError("INTERNAL", { detail: "AI 上游请求失败", cause: error });
+  } finally {
+    clearTimeout(timeout);
+  }
+}

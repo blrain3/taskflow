@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 
+import { ROUTES, runAction } from "@/actions/_contract";
 import { requireUser } from "@/lib/auth";
 import { assertDocumentAccess } from "@/lib/document-permissions";
 import {
+  applyDocumentSummary,
   createDocument,
   deleteDocument,
   restoreDocumentVersion,
@@ -13,6 +15,7 @@ import {
 import { toActionError } from "@/lib/errors";
 import { ensureWorkspaceForUser } from "@/lib/permissions";
 import {
+  applyDocumentSummarySchema,
   createDocumentSchema,
   fieldErrorsOf,
   restoreDocumentVersionSchema,
@@ -30,9 +33,12 @@ import type { ActionError, ActionResult } from "@/types/action";
  * 否则一旦用户属于多个工作区，授权判定与写入范围就会错位（按 A 授权、往 B 写）。
  */
 
-const DOCUMENTS_PATH = "/documents";
+const DOCUMENTS_PATH = ROUTES.documents;
 
-type DocumentActionState = ActionResult<null | { contentVersion: number }> | null;
+/** 各入口的返回数据形状不同：保存回传新版本号，摘要写入回传已落库的摘要文本（null 即已清空） */
+type DocumentActionData = null | { contentVersion: number } | { summary: string | null };
+
+type DocumentActionState = ActionResult<DocumentActionData> | null;
 
 function failure(error: ActionError): { ok: false; error: ActionError } {
   return { ok: false, error };
@@ -115,7 +121,7 @@ export async function saveDocumentAction(
     });
 
     revalidatePath(DOCUMENTS_PATH);
-    revalidatePath(`${DOCUMENTS_PATH}/${target.id}`);
+    revalidatePath(ROUTES.documentDetail(target.id));
     return { ok: true, data: { contentVersion: document.contentVersion } };
   } catch (error) {
     return failure(toActionError(error));
@@ -137,7 +143,7 @@ export async function deleteDocumentAction(
     await deleteDocument({ id: target.id, workspaceId: target.workspaceId });
 
     revalidatePath(DOCUMENTS_PATH);
-    revalidatePath(`${DOCUMENTS_PATH}/${target.id}`);
+    revalidatePath(ROUTES.documentDetail(target.id));
     return { ok: true, data: null };
   } catch (error) {
     return failure(toActionError(error));
@@ -172,9 +178,46 @@ export async function restoreDocumentVersionAction(
     });
 
     revalidatePath(DOCUMENTS_PATH);
-    revalidatePath(`${DOCUMENTS_PATH}/${target.id}`);
+    revalidatePath(ROUTES.documentDetail(target.id));
     return { ok: true, data: null };
   } catch (error) {
     return failure(toActionError(error));
   }
+}
+
+/**
+ * 写入 AI 摘要（用户在面板上点「写入文档摘要」之后才会调用）。
+ *
+ * 生成（/api/ai/summarize）与写库刻意拆开：AI 建议先展示给用户，采纳才落库，
+ * 因此建议在被采纳前不会污染文档。摘要属元数据，不递增 contentVersion
+ * （见 lib/documents.ts 的 applyDocumentSummary 说明）。
+ */
+export async function applyDocumentSummaryAction(
+  _prevState: DocumentActionState,
+  formData: FormData
+): Promise<DocumentActionState> {
+  const result = await runAction({
+    schema: applyDocumentSummarySchema,
+    rawInput: {
+      documentId: readString(formData, "documentId") ?? "",
+      summary: readOptionalString(formData, "summary") ?? null,
+    },
+    validationMessage: "摘要参数不合法",
+    authorize: async (input) => {
+      const user = await requireUser();
+      // 授权与写入同源：写库用文档实际所属的工作区
+      const target = await assertDocumentAccess(user.id, input.documentId, "edit");
+      return { workspaceId: target.workspaceId, documentId: target.id };
+    },
+    run: (input, auth) =>
+      applyDocumentSummary({
+        documentId: auth.documentId,
+        workspaceId: auth.workspaceId,
+        summary: input.summary,
+      }),
+    revalidate: (_output, auth) => [DOCUMENTS_PATH, ROUTES.documentDetail(auth.documentId)],
+  });
+
+  if (!result.ok) return result;
+  return { ok: true, data: { summary: result.data.summary } };
 }

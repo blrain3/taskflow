@@ -4,7 +4,7 @@
 
 > **方向说明**：产品方向已由 [ADR-007](docs/02-architecture/adr-007-writing-platform-direction.md) 确定为「多人写作平台」，第一阶段是面向多人 Workspace 的**单人写作 MVP**（成员访问不等于实时协同编辑）。写作能力（Document / DocumentVersion、编辑器、自动保存与版本恢复）已落地；原 Issue 看板保留为**历史模块**，不再扩展，但仍是回归基线。
 >
-> **完成度**：Sprint 0–4 与 P0 整改已完成并通过容器验证。预览部署与国内部署（P0-14 / P0-15）尚未开始，因此**当前没有可访问的线上地址**。
+> **完成度**：Sprint 0–4 与 P0 整改已完成并通过容器验证。日本服务器源站已完成 Docker、PostgreSQL 迁移、Nginx 与 HTTPS 部署，地址为 <https://blrain.us.ci>；当前公网访问仍受 Cloudflare Managed Challenge 拦截，需在 Cloudflare 放行后才算对外可用。
 
 ---
 
@@ -118,7 +118,7 @@ npm run dev
 >
 > 限流 key 策略与「按 IP 限流的可信前提」见 [API 契约](docs/02-architecture/api-contracts.md) §3；生产必须由 Nginx 覆写 `X-Forwarded-For` 并设 `TRUST_PROXY=true`，否则注册接口没有频次防护。
 
-变量缺失时不会静默降级：`lib/env.ts` 会抛出包含修复步骤的错误，`/api/health` 会以 503 返回缺失的变量名。`AI_*` 属「可选功能级」：未配置时 AI 能力关闭，但服务健康检查仍为 `ok`，`disabledFeatures` 会列出被关闭的能力。
+变量缺失时不会静默降级：`lib/env.ts` 会抛出包含修复步骤的错误，`/api/health` 返回 503。响应体分环境：**非生产**会列出 `missingEnv` 与 `disabledFeatures` 便于排查，**生产只返回 `{status}`**（公开端点不泄露配置状态，生产排障需看容器日志）。`AI_*` 属「可选功能级」：未配置时 AI 能力关闭，但健康检查仍为 `ok`。完整契约见 [API 契约](docs/02-architecture/api-contracts.md) §8。
 
 ---
 
@@ -224,7 +224,7 @@ docker compose exec -T db psql -U taskflow -d taskflow < backup.sql
 
 ## 已知限制与后续工作
 
-- **尚未部署**：预览环境与国内生产环境（P0-14 / P0-15）未开始，含 Nginx + Certbot、`prisma migrate deploy` 演练、备份恢复演练与 ICP 备案。
+- **部署状态**：日本单实例源站已部署（Docker Compose + Nginx + Certbot，2026-09-14）；公网可用性仍受 Cloudflare Challenge 影响。备份恢复演练、Redis 限流、多实例迁移 Job 和持续交付尚未完成。
 - **限流为单实例内存计数**：多副本部署时各副本独立计数，实际额度会被放大；接入 Redis 后替换 store 即可，函数签名不变。
 - **按 IP 限流依赖代理覆写请求头**：生产未设 `TRUST_PROXY=true` 时会整体跳过该维度，需用 Nginx `limit_req` 补齐注册路径。
 - **拖拽与 AI 面板点击链路无自动化覆盖**：二者依赖客户端 JS 事件，HTTP 冒烟只能覆盖服务端契约与 SSR；Playwright 仅基础用例且未纳入 CI。

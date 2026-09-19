@@ -14,6 +14,21 @@ jobs:
     name: lint / format / docs / build / test
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: taskflow
+          POSTGRES_PASSWORD: taskflow
+          POSTGRES_DB: taskflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taskflow -d taskflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
     # 这些值仅用于让构建期能完成环境校验，不具备任何真实权限。
     # 真实的 DATABASE_URL / AUTH_SECRET / AI_API_KEY 只存在于本地 .env 与服务器。
     env:
@@ -43,6 +58,9 @@ jobs:
       - name: Validate Prisma schema
         run: npx prisma validate
 
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
       # 文档质量门禁第 1 条（相对链接必须存在）此前只写在 docs/README.md 里，无人执行；
       # 文档目录重组后根 README 曾残留 9 条失效链接。这里把它变成可执行检查。
       - name: Docs links
@@ -60,4 +78,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # 待办：E2E 用例扩充到覆盖看板拖拽与 AI 确认链路后，追加 `npm run test:e2e` 门禁。
+      # 当前先纳入健康检查与未登录跳转；拖拽、AI 确认等业务闭环待用例稳定后继续扩充。
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright smoke tests
+        run: npm run test:e2e

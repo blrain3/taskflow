@@ -48,7 +48,7 @@ export function SortableIssueCard({ issue, pending }: { issue: IssueItem; pendin
       style={{ transform: CSS.Transform.toString(transform), transition }}
       {...attributes}
       {...listeners}
-      className={`cursor-grab touch-none rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+      className={`cursor-grab touch-none rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${
         isDragging ? "opacity-40" : ""
       }`}
       aria-label={`任务：${issue.title}`}

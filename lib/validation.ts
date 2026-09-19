@@ -99,10 +99,24 @@ export const saveDocumentSchema = z.object({
   baseVersion: z.number().int().min(1, { error: "文档版本不合法" }),
 });
 
+export const aiSummarizeRequestSchema = z.object({
+  documentId: z.string().trim().min(1, { error: "缺少文档 ID" }),
+});
+
 export const restoreDocumentVersionSchema = z.object({
   documentId: z.string().trim().min(1, { error: "缺少文档 ID" }),
   version: z.number().int().min(1, { error: "版本号不合法" }),
   baseVersion: z.number().int().min(1, { error: "文档版本不合法" }),
+});
+
+/**
+ * AI 摘要写入：`summary` 用 documentSummarySchema（空串归一为 null，即显式清空）。
+ * 刻意**不含 baseVersion**——摘要属于元数据而非正文，写入不递增 contentVersion、
+ * 不产生版本记录，因此也不会让编辑器正在持有的乐观锁失效（否则下一次自动保存必冲突）。
+ */
+export const applyDocumentSummarySchema = z.object({
+  documentId: z.string().trim().min(1, { error: "缺少文档 ID" }),
+  summary: documentSummarySchema,
 });
 
 // ---- Issue ----
@@ -230,6 +244,7 @@ export const aiBreakdownRequestSchema = z.object({
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
 export type SaveDocumentInput = z.infer<typeof saveDocumentSchema>;
 export type RestoreDocumentVersionInput = z.infer<typeof restoreDocumentVersionSchema>;
+export type ApplyDocumentSummaryInput = z.infer<typeof applyDocumentSummarySchema>;
 
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;

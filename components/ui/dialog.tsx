@@ -15,7 +15,7 @@ export function DialogContent({
 }: ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-scrim" />
       <DialogPrimitive.Content
         {...props}
         className={cn(
