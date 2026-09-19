@@ -8,6 +8,23 @@
 
 ---
 
+## 本地开发环境（WSL）
+
+推荐在 WSL2 Ubuntu 24.04 中开发，代码放 ext4 文件系统（**不要**放 `/mnt/d`，I/O 慢约 50 倍）。
+
+```bash
+git clone git@github.com:blrain3/taskflow.git ~/projects/taskflow
+cd ~/projects/taskflow
+npm install
+npx prisma generate
+cp .env.example .env      # 按需填写 DATABASE_URL / AUTH_SECRET
+npm run dev
+```
+
+VS Code 用 Remote-WSL 打开：在 WSL 内执行 `code .`。
+
+---
+
 ## 技术栈
 
 | 层 | 选型 |
