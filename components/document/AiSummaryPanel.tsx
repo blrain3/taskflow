@@ -26,7 +26,8 @@ export function AiSummaryPanel({ documentId }: { documentId: string }) {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
-  const applied = state?.ok && state.data ? state.data.summary : null;
+  const applied =
+    state?.ok && state.data && "summary" in state.data ? state.data.summary : null;
 
   async function handleGenerate() {
     setGenerating(true);
