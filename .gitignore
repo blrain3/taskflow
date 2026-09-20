@@ -50,9 +50,7 @@ yarn-error.log*
 # local scratch space (smoke test artifacts etc.)
 /.smoke
 
-# project documentation is maintained locally and is not committed
-/docs/
-
+# project documentation is tracked in the repository
 # vercel
 .vercel
 
