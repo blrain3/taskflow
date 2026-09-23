@@ -22,8 +22,10 @@ export function DocumentEditor({ document }: { document: DocumentItem }) {
   // AUTOSAVE_DELAY_MS 写一次库的死循环（每次还会多插一条版本记录）。
   const [submittedRevision, setSubmittedRevision] = useState(0);
 
-  // DocumentActionState 是各入口共享的联合类型：只有保存入口回传 contentVersion，
-  // 其他入口（摘要写入/删除/恢复）不递增版本号，此时退回服务端渲染的最新版本
+  // DocumentActionState 是各入口共享的联合类型：保存与恢复都回传 contentVersion，
+  // 摘要写入与删除不递增版本号，此时退回服务端渲染的最新版本。
+  // （曾经把恢复也当成「不递增」，但 lib/documents.ts 的 restoreDocumentVersion
+  //  是 increment: 1，漏掉会让它显示成旧版本号。）
   const savedVersion =
     state?.ok && state.data && "contentVersion" in state.data
       ? state.data.contentVersion

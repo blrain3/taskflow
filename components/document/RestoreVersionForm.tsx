@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 import { restoreDocumentVersionAction } from "@/actions/document";
 import { FormError } from "@/components/ui/field-error";
@@ -25,6 +26,16 @@ export function RestoreVersionForm({
   baseVersion: number;
 }) {
   const [state, formAction] = useActionState(restoreDocumentVersionAction, null);
+  const router = useRouter();
+
+  // 恢复后服务端版本号已递增，本页面还有别处依赖它（编辑器状态行、编辑器表单的
+  // baseVersion 隐藏字段）。router.refresh() 只会重新拉取被 revalidatePath 标脏的
+  // segment，实测恢复后版本历史列表确实更新了，但编辑器拿到的 document prop 没变：
+  // baseVersion 仍停在旧值，状态行也仍显示旧版本。后果不只是显示错——下一次自动
+  // 保存会拿着过期的 baseVersion 提交，必然撞 CONFLICT。所以这里整页重载。
+  useEffect(() => {
+    if (state?.ok) window.location.reload();
+  }, [state]);
 
   return (
     <details className="shrink-0">

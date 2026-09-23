@@ -17,7 +17,9 @@ test.use({ storageState: OWNER_STATE });
 test.describe("文档创建与列表", () => {
   test("从列表页创建文档并进入编辑器", async ({ page }) => {
     await page.goto("/documents");
-    await expect(page.getByRole("heading", { name: "文档" })).toBeVisible();
+    // 页面同时存在 h1「文档」、h2「新建文档」、h2「最近文档」三个 heading，
+    // getByRole 的 name 默认是子串包含匹配，不加 exact 会 strict mode violation。
+    await expect(page.getByRole("heading", { name: "文档", exact: true })).toBeVisible();
 
     const title = `E2E 创建-${Date.now()}`;
     await page.getByLabel("标题").fill(title);
@@ -85,7 +87,13 @@ test.describe("编辑、自动保存与版本历史", () => {
     await expect(page.getByText("已保存 · 版本 2")).toBeVisible({ timeout: 15_000 });
 
     // 展开版本 1 的恢复确认
-    const restore = page.getByRole("listitem").filter({ hasText: "版本 1" }).getByText("恢复");
+    // 「恢复」二字在该 li 内命中三处：<summary>恢复<span sr-only>版本 1</span>、
+    // details 内的说明文案、以及「确认恢复」按钮。必须精确取 summary 本身。
+    const restore = page
+      .getByRole("listitem")
+      .filter({ hasText: "版本 1" })
+      .locator("summary")
+      .filter({ hasText: "恢复" });
     await restore.click();
     await page.getByRole("button", { name: "确认恢复" }).click();
 
@@ -115,16 +123,23 @@ test.describe("编辑、自动保存与版本历史", () => {
     await page.getByLabel("文档标题").fill(`${documentTitle}-待删除`);
     await expect(page.getByText("已保存 · 版本 2")).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole("link", { name: "返回文档列表" }).click();
+    // 客户端软导航返回列表时，列表是 Router Cache 里的旧渲染（标题仍是改名前的值），
+    // 新标题的行必定找不到。这里直接导航到列表页取服务端数据，并等它稳定后再操作：
+    // 早先在未稳定的列表上点 details，会在点击过程中被重渲染 detach 掉。
+    await page.goto("/documents");
+    await expect(page.getByRole("link", { name: "返回文档列表" })).toHaveCount(0);
     const row = page.getByRole("list").getByRole("link", { name: `${documentTitle}-待删除` });
     await expect(row).toBeVisible();
 
-    await row.click();
+    // 删除入口只在列表页（app/(dashboard)/documents/page.tsx 里每行一个
+    // DeleteDocumentForm），详情页没有删除按钮——所以不需要进详情页。列表是服务端
+    // 渲染的，标题已是改后的值。
     await page.getByLabel(`删除「${documentTitle}-待删除」`).click();
     await page.getByRole("button", { name: "确认删除" }).click();
 
-    // 删除后回到列表（或手动返回），该文档不再出现
-    await page.getByRole("link", { name: "返回文档列表" }).click();
-    await expect(page.getByRole("list")).not.toContainText(`${documentTitle}-待删除`);
+    // 删除成功后数据在服务端已归档，前端 refresh 让列表重取，该行应从列表消失。
+    await expect(page.getByRole("list")).not.toContainText(`${documentTitle}-待删除`, {
+      timeout: 15_000,
+    });
   });
 });
