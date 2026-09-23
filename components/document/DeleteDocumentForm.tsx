@@ -1,8 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 import { deleteDocumentAction } from "@/actions/document";
+// 注意：不能从 @/actions/_contract 导入 ROUTES——那是 "use server" 模块，
+// 客户端组件引用会报错。此处只有一个跳转目标，写字面量并说明来源。
+const DOCUMENTS_PATH = "/documents"; // = ROUTES.documents
 import { FormError } from "@/components/ui/field-error";
 import { SubmitButton } from "@/components/ui/submit-button";
 
@@ -13,12 +17,24 @@ import { SubmitButton } from "@/components/ui/submit-button";
  * 无 JS 时仍可展开并提交、键盘可达且展开状态由浏览器维护（组件无需本地 state）、
  * 表单始终存在于 SSR 输出中便于自动化测试。
  *
- * 删除后的刷新与状态更新由服务端完成：Action 内 `revalidatePath("/documents")` 会让当前
- * 路由重新渲染，被删文档因 `deletedAt: null` 过滤而自然消失，因此这里不需要额外的
- * `router.refresh()`；失败（NOT_FOUND 等）通过 FormError 就地呈现，不会静默。
+ * 删除后的状态更新与跳转：Action 内 `revalidatePath("/documents")` 让列表数据失效，
+ * 被删文档因 `deletedAt: null` 过滤而自然消失；但**跳转要组件自己做**（见下方 useEffect）。
+ * 失败（NOT_FOUND 等）通过 FormError 就地呈现，不会静默。
  */
 export function DeleteDocumentForm({ documentId, title }: { documentId: string; title: string }) {
   const [state, formAction] = useActionState(deleteDocumentAction, null);
+  const router = useRouter();
+
+  // 删除后文档带 deletedAt，详情页的查询会因 `deletedAt: null` 过滤而取不到它。
+  // revalidatePath 只标脏数据，不会把用户挪走、也不会自动重取当前路由——实测删完
+  // 仍停在原页面（条目还在，按钮僵在「删除中…」）。所以成功后：先 refresh 让列表
+  // 拿到服务端最新数据；若当前正停在已失效的详情页，再跳回列表。
+  useEffect(() => {
+    if (!state?.ok) return;
+    router.refresh();
+    const path = window.location.pathname;
+    if (path.startsWith(`${DOCUMENTS_PATH}/`)) router.push(DOCUMENTS_PATH);
+  }, [router, state]);
 
   return (
     <details className="shrink-0">

@@ -171,7 +171,7 @@ export async function restoreDocumentVersionAction(
     const user = await requireUser();
     const target = await assertDocumentAccess(user.id, parsed.data.documentId, "restore");
 
-    await restoreDocumentVersion({
+    const restored = await restoreDocumentVersion({
       ...parsed.data,
       workspaceId: target.workspaceId,
       userId: user.id,
@@ -179,7 +179,10 @@ export async function restoreDocumentVersionAction(
 
     revalidatePath(DOCUMENTS_PATH);
     revalidatePath(ROUTES.documentDetail(target.id));
-    return { ok: true, data: null };
+    // 恢复是一次正向写入，服务端已把 contentVersion 递增（lib/documents.ts 的
+    // restoreDocumentVersion 里 updateMany 带 increment: 1）。不回传的话编辑器
+    // 状态行会停留在旧版本号，表现为「恢复了但版本没变」。
+    return { ok: true, data: { contentVersion: restored.contentVersion } };
   } catch (error) {
     return failure(toActionError(error));
   }
